@@ -391,3 +391,12 @@ export LOG_LEVEL=ERROR  # For minimal output
 ## License
 
 This project is licensed under the Apache 2.0 License. See the [LICENSE](https://www.apache.org/licenses/LICENSE-2.0.txt) file for details.
+<<<<<<< HEAD
+=======
+
+---
+
+**Author**: Sai Karthik <kskarthik@disroot.org>
+
+**Project Repository**: [GitHub](https://github.com/yourusername/mcp-bugzilla) (update with actual URL if available)
+>>>>>>> fix: improving the readme for better readablity
