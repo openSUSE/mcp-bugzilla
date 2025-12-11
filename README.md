@@ -1,5 +1,7 @@
 # Bugzilla Model Context Protocol (MCP) Server
 
+[![Tests](https://github.com/SanthoshSiddegowda/mcp-bugzilla/actions/workflows/tests.yml/badge.svg)](https://github.com/SanthoshSiddegowda/mcp-bugzilla/actions/workflows/tests.yml)
+
 A robust MCP server that provides seamless interaction with Bugzilla instances through the Model Context Protocol. This server exposes a comprehensive set of tools and prompts, enabling AI models and other MCP clients to efficiently query bug information, manage comments, and leverage Bugzilla's powerful quicksearch capabilities.
 
 ## Table of Contents

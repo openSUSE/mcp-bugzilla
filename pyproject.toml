@@ -12,6 +12,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "uv",
+    "pytest",
+    "pytest-asyncio",
+    "respx",
 ]
 
 [project.scripts]
