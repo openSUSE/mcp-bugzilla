@@ -8,12 +8,12 @@ License: Apache 2.0
 
 import logging
 import os
-from typing import Any
+from contextvars import ContextVar
+from typing import Any, Optional
 
 import httpx
 
-
-# logging config
+# Logging configuration
 class ColorFormatter(logging.Formatter):
     GREY = "\x1b[38;20m"
     YELLOW = "\x1b[33;20m"
@@ -51,74 +51,123 @@ handler.setFormatter(ColorFormatter())
 mcp_log = logging.getLogger("bugzilla-mcp")
 mcp_log.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
 mcp_log.addHandler(handler)
-mcp_log.propagate = False  # Prevent double logging if root logger is configured
+mcp_log.propagate = False
+
+# ContextVar to hold the Bugzilla client instance for the current context
+bugzilla_client: ContextVar[Optional["Bugzilla"]] = ContextVar("bugzilla_client", default=None)
 
 
-# Bugzilla API methods
 class Bugzilla:
-    """Bugzilla API class"""
+    """Async Bugzilla API client"""
 
     def __init__(self, url: str, api_key: str):
-        self.api_url: str = url + "/rest"
-        self.base_url: str = url
-        self.api_key: str = api_key
-        # request params sent for each request
-        self.params: dict[str, Any] = {"api_key": self.api_key}
+        self.base_url = url.rstrip("/")
+        self.api_url = f"{self.base_url}/rest"
+        self.api_key = api_key
+        # We'll use a single client for the instance
+        self.client = httpx.AsyncClient(
+            base_url=self.api_url,
+            params={"api_key": self.api_key},
+            timeout=30.0,
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+        )
 
-    def bug_info(self, bug_id: int) -> dict[str, Any]:
-        """get information about a given bug"""
-        url = f"{self.api_url}/bug/{bug_id}"
-        mcp_log.info(f"[BZ-REQ] GET {url} params={self.params}")
+    async def close(self):
+        await self.client.aclose()
+    
+    @property
+    def params(self) -> dict[str, Any]:
+        """Return params (mainly for read access if needed externally)"""
+        return {"api_key": self.api_key}
 
-        r = httpx.get(url=url, params=self.params)
+    async def bug_info(self, bug_id: int) -> dict[str, Any]:
+        """Get information about a given bug"""
+        # Note: self.client has base_url set to .../rest
+        # So we request /bug/{id} relative to that.
+        url = f"/bug/{bug_id}" 
+        mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url}")
 
-        if r.status_code != 200:
-            mcp_log.error(f"[BZ-RES] Failed: {r.status_code} {r.text}")
-            raise httpx.TransportError(
-                f"Failed to fetch API with Status code: {r.status_code}"
-            )
+        try:
+            r = await self.client.get(url)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            mcp_log.error(f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}")
+            raise
+        except httpx.RequestError as e:
+            mcp_log.error(f"[BZ-RES] Network Error: {e}")
+            raise
 
-        data = r.json()["bugs"][0]
+        data = r.json().get("bugs", [{}])[0]
         mcp_log.info(f"[BZ-RES] Found bug {bug_id}")
         mcp_log.debug(f"[BZ-RES] {data}")
         return data
 
-    def bug_comments(self, bug_id: int) -> dict[str, Any]:
+    async def bug_comments(self, bug_id: int) -> list[dict[str, Any]]:
         """Get comments of a bug"""
-        url = f"{self.api_url}/bug/{bug_id}/comment"
-        mcp_log.info(f"[BZ-REQ] GET {url} params={self.params}")
+        url = f"/bug/{bug_id}/comment"
+        mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url}")
 
-        r = httpx.get(url=url, params=self.params)
+        try:
+            r = await self.client.get(url)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            mcp_log.error(f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}")
+            raise
+        except httpx.RequestError as e:
+            mcp_log.error(f"[BZ-RES] Network Error: {e}")
+            raise
 
-        if r.status_code != 200:
-            mcp_log.error(f"[BZ-RES] Failed: {r.status_code} {r.text}")
-            raise httpx.TransportError(
-                f"Failed to fetch API with Status code: {r.status_code}"
-            )
-
-        data = r.json()["bugs"][f"{bug_id}"]["comments"]
+        # The response structure is {"bugs": {"<id>": {"comments": [...]}}}
+        data = r.json().get("bugs", {}).get(str(bug_id), {}).get("comments", [])
         mcp_log.info(f"[BZ-RES] Found {len(data)} comments")
         mcp_log.debug(f"[BZ-RES] {data}")
         return data
 
-    def add_comment(
+    async def add_comment(
         self, bug_id: int, comment: str, is_private: bool
     ) -> dict[str, int]:
         """Add a comment to bug, which can optionally be private"""
+        payload = {"comment": comment, "is_private": is_private}
+        url = f"/bug/{bug_id}/comment"
+        mcp_log.info(f"[BZ-REQ] POST {self.api_url}{url} json={payload}")
 
-        c = {"comment": comment, "is_private": is_private}
-        url = f"{self.api_url}/bug/{bug_id}/comment"
-        mcp_log.info(f"[BZ-REQ] POST {url} params={self.params} json={c}")
-
-        r = httpx.post(url=url, params=self.params, json=c)
-
-        if r.status_code != 201:
-            mcp_log.error(f"[BZ-RES] Failed: {r.status_code} {r.text}")
-            raise httpx.TransportError(
-                f"Failed to fetch API with Status code: {r.status_code}"
-            )
+        try:
+            r = await self.client.post(url, json=payload)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            mcp_log.error(f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}")
+            raise
+        except httpx.RequestError as e:
+            mcp_log.error(f"[BZ-RES] Network Error: {e}")
+            raise
 
         data = r.json()
         mcp_log.info("[BZ-RES] Comment added successfully")
         mcp_log.debug(f"[BZ-RES] {data}")
         return data
+
+    async def quicksearch(self, query: str, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        """Perform a quicksearch"""
+        # Quicksearch isn't a direct REST endpoint usually, but /bug with quicksearch param works
+        params = {
+            "quicksearch": query,
+            "limit": limit,
+            "offset": offset,
+        }
+        # Merge with existing params (api_key)
+        
+        mcp_log.info(f"[BZ-REQ] GET {self.api_url}/bug params={params}")
+        
+        try:
+            r = await self.client.get("/bug", params=params)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            mcp_log.error(f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}")
+            raise
+        except httpx.RequestError as e:
+            mcp_log.error(f"[BZ-RES] Network Error: {e}")
+            raise
+
+        bugs = r.json().get("bugs", [])
+        mcp_log.info(f"[BZ-RES] Found {len(bugs)} bugs")
+        return bugs

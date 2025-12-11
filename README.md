@@ -1,5 +1,7 @@
 # Bugzilla Model Context Protocol (MCP) Server
 
+[![Tests](https://github.com/openSUSE/mcp-bugzilla/actions/workflows/tests.yml/badge.svg)](https://github.com/openSUSE/mcp-bugzilla/actions/workflows/tests.yml)
+
 A robust MCP server that provides seamless interaction with Bugzilla instances through the Model Context Protocol. This server exposes a comprehensive set of tools and prompts, enabling AI models and other MCP clients to efficiently query bug information, manage comments, and leverage Bugzilla's powerful quicksearch capabilities.
 
 ## Table of Contents
@@ -391,3 +393,15 @@ export LOG_LEVEL=ERROR  # For minimal output
 ## License
 
 This project is licensed under the Apache 2.0 License. See the [LICENSE](https://www.apache.org/licenses/LICENSE-2.0.txt) file for details.
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+
+---
+
+**Author**: Sai Karthik <kskarthik@disroot.org>
+
+**Project Repository**: [GitHub](https://github.com/yourusername/mcp-bugzilla) (update with actual URL if available)
+>>>>>>> fix: improving the readme for better readablity
+=======
+>>>>>>> fix: removed the unwanted info on the readme
