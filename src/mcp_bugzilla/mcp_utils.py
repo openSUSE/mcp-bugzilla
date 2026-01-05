@@ -10,8 +10,9 @@ import logging
 import os
 from contextvars import ContextVar
 from typing import Any, Optional
-
+from httpx_retries import RetryTransport
 import httpx
+
 
 # Logging configuration
 class ColorFormatter(logging.Formatter):
@@ -54,7 +55,9 @@ mcp_log.addHandler(handler)
 mcp_log.propagate = False
 
 # ContextVar to hold the Bugzilla client instance for the current context
-bugzilla_client: ContextVar[Optional["Bugzilla"]] = ContextVar("bugzilla_client", default=None)
+bugzilla_client: ContextVar[Optional["Bugzilla"]] = ContextVar(
+    "bugzilla_client", default=None
+)
 
 
 class Bugzilla:
@@ -70,11 +73,12 @@ class Bugzilla:
             params={"api_key": self.api_key},
             timeout=30.0,
             headers={"Content-Type": "application/json", "Accept": "application/json"},
+            transport=RetryTransport(),
         )
 
     async def close(self):
         await self.client.aclose()
-    
+
     @property
     def params(self) -> dict[str, Any]:
         """Return params (mainly for read access if needed externally)"""
@@ -84,14 +88,16 @@ class Bugzilla:
         """Get information about a given bug"""
         # Note: self.client has base_url set to .../rest
         # So we request /bug/{id} relative to that.
-        url = f"/bug/{bug_id}" 
+        url = f"/bug/{bug_id}"
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url}")
 
         try:
             r = await self.client.get(url)
             r.raise_for_status()
         except httpx.HTTPStatusError as e:
-            mcp_log.error(f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}")
+            mcp_log.error(
+                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
+            )
             raise
         except httpx.RequestError as e:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
@@ -111,7 +117,9 @@ class Bugzilla:
             r = await self.client.get(url)
             r.raise_for_status()
         except httpx.HTTPStatusError as e:
-            mcp_log.error(f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}")
+            mcp_log.error(
+                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
+            )
             raise
         except httpx.RequestError as e:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
@@ -135,7 +143,9 @@ class Bugzilla:
             r = await self.client.post(url, json=payload)
             r.raise_for_status()
         except httpx.HTTPStatusError as e:
-            mcp_log.error(f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}")
+            mcp_log.error(
+                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
+            )
             raise
         except httpx.RequestError as e:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
@@ -146,7 +156,9 @@ class Bugzilla:
         mcp_log.debug(f"[BZ-RES] {data}")
         return data
 
-    async def quicksearch(self, query: str, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+    async def quicksearch(
+        self, query: str, limit: int = 50, offset: int = 0
+    ) -> list[dict[str, Any]]:
         """Perform a quicksearch"""
         # Quicksearch isn't a direct REST endpoint usually, but /bug with quicksearch param works
         params = {
@@ -155,14 +167,16 @@ class Bugzilla:
             "offset": offset,
         }
         # Merge with existing params (api_key)
-        
+
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}/bug params={params}")
-        
+
         try:
             r = await self.client.get("/bug", params=params)
             r.raise_for_status()
         except httpx.HTTPStatusError as e:
-            mcp_log.error(f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}")
+            mcp_log.error(
+                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
+            )
             raise
         except httpx.RequestError as e:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
