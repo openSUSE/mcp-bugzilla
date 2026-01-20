@@ -157,16 +157,23 @@ class Bugzilla:
         return data
 
     async def quicksearch(
-        self, query: str, limit: int = 50, offset: int = 0
+        self,
+        query: str,
+        status: str,
+        include_fields: str,
+        limit: int,
+        offset: int
     ) -> list[dict[str, Any]]:
         """Perform a quicksearch"""
         # Quicksearch isn't a direct REST endpoint usually, but /bug with quicksearch param works
+
         params = {
-            "quicksearch": query,
+            "quicksearch": status + " " + query,
+            "include_fields": include_fields,
             "limit": limit,
             "offset": offset,
+            "order": "relevance"
         }
-        # Merge with existing params (api_key)
 
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}/bug params={params}")
 

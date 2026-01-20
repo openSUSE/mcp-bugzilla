@@ -14,6 +14,7 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import PromptError, ToolError, ValidationError
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.server.middleware import Middleware, MiddlewareContext
+from typing import Optional
 
 from .mcp_utils import Bugzilla, bugzilla_client, mcp_log
 
@@ -124,7 +125,13 @@ async def add_comment(bug_id: int, comment: str, is_private: bool = False) -> di
 
 
 @mcp.tool()
-async def bugs_quicksearch(query: str, limit: int = 50, offset: int = 0) -> List[Any]:
+async def bugs_quicksearch(
+    query: str,
+    status: Optional[str] = "ALL",
+    include_fields: Optional[str] = "id,product,component,assigned_to,status,resolution,summary,last_change_time",
+    limit: Optional[int] = 50,
+    offset: Optional[int] = 0
+) -> List[Any]:
     """Search bugs using bugzilla's quicksearch syntax
     
     To reduce the token limit & response time, only returns a subset of fields for each bug
@@ -132,29 +139,16 @@ async def bugs_quicksearch(query: str, limit: int = 50, offset: int = 0) -> List
     """
 
     mcp_log.info(
-        f"[LLM-REQ] bugs_quicksearch(query='{query}', limit={limit}, offset={offset})"
+        f"[LLM-REQ] bugs_quicksearch(query='{query}',status='{status}', include_fields='{include_fields}', limit={limit}, offset={offset})"
     )
 
     try:
         bz = get_bz()
         # We moved quicksearch logic to mcp_utils
-        all_bugs = await bz.quicksearch(query, limit, offset)
+        bugs = await bz.quicksearch(query, status, include_fields, limit, offset)
 
-        bugs_with_essential_fields = []
-        for bug in all_bugs:
-            bugs_with_essential_fields.append({
-                "bug_id": bug.get("id"),
-                "product": bug.get("product"),
-                "component": bug.get("component"),
-                "assigned_to": bug.get("assigned_to"),
-                "status": bug.get("status"),
-                "resolution": bug.get("resolution"),
-                "summary": bug.get("summary"),
-                "last_updated": bug.get("last_change_time"),
-            })
-
-        mcp_log.info(f"[LLM-RES] Found {len(bugs_with_essential_fields)} bugs")
-        return bugs_with_essential_fields
+        mcp_log.info(f"[LLM-RES] Found {len(bugs)} bugs")
+        return bugs
 
     except Exception as e:
         raise ToolError(f"Search failed: {e}")
