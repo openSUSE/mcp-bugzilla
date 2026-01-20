@@ -171,8 +171,8 @@ async def learn_quicksearch_syntax() -> str:
         bz = get_bz()
         # We can use the client to fetch this page too, though it's not a rest API
         # Using the underlying client for convenience
-        url = f"{bz.base_url}/page.cgi?id=quicksearch.html"
-        r = await bz.client.get(url)  # Use absolute URL since base_url of client is /rest
+        url = f"{bz.base_url}/page.cgi"
+        r = await bz.client.get(url,params={"id": "quicksearch.html"})  # Use absolute URL since base_url of client is /rest
         
         # Wait, bz.client.base_url is .../rest.
         # So we should use a new request or adjust.
