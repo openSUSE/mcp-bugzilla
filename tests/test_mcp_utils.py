@@ -76,9 +76,25 @@ async def test_add_comment(bz_client):
 @pytest.mark.asyncio
 async def test_quicksearch(bz_client):
     async with respx.mock(base_url=MOCK_URL) as respx_mock:
-        respx_mock.get("/rest/bug").mock(
+        route = respx_mock.get("/rest/bug").mock(
             return_value=Response(200, json={"bugs": [{"id": 1}, {"id": 2}]})
         )
         
-        bugs = await bz_client.quicksearch("product:Foo")
+        # Test with explicit arguments (mandatory in mcp_utils)
+        bugs = await bz_client.quicksearch(
+            "product:Foo",
+            status="ALL",
+            include_fields="id,product",
+            limit=50,
+            offset=0
+        )
         assert len(bugs) == 2
+        
+        # Verify call arguments
+        assert route.called
+        params = route.calls.last.request.url.params
+        assert params["quicksearch"] == "ALL product:Foo"
+        assert params["limit"] == "50"
+        assert params["offset"] == "0"
+        assert "include_fields" in params
+        assert params["include_fields"] == "id,product"
