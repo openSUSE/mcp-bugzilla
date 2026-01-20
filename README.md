@@ -45,9 +45,11 @@ The server provides the following tools for interacting with Bugzilla:
 
 #### Bug Search
 
-- **`bugs_quicksearch(query: str, limit: int = 50, offset: int = 0)`**: Executes a search for bugs using Bugzilla's powerful [quicksearch syntax](https://bugzilla.readthedocs.io/en/latest/using/finding.html#quicksearch).
+- **`bugs_quicksearch(query: str, status: str = "ALL", include_fields: str = "...", limit: int = 50, offset: int = 0)`**: Executes a search for bugs using Bugzilla's powerful [quicksearch syntax](https://bugzilla.readthedocs.io/en/latest/using/finding.html#quicksearch).
   - **Parameters**:
-    - `query`: A quicksearch query string (e.g., `"product:Firefox status:NEW"`)
+    - `query`: A quicksearch query string (e.g., `"product:Firefox"`)
+    - `status`: Bug status to filter by (default: `"ALL"`)
+    - `include_fields`: Comma-separated list of fields to return (default: `"id,product,component,assigned_to,status,resolution,summary,last_change_time"`)
     - `limit`: Maximum number of results to return (default: `50`)
     - `offset`: Number of results to skip for pagination (default: `0`)
   - **Returns**: A list of dictionaries, each containing essential bug fields:
@@ -60,7 +62,7 @@ The server provides the following tools for interacting with Bugzilla:
     - `summary`: Bug summary
     - `last_updated`: Last update timestamp
   - **Note**: Returns a curated subset of fields to optimize token usage. Use `bug_info()` to get full details for specific bugs.
-  - **Example**: `bugs_quicksearch("product:Firefox status:NEW", limit=10)`
+  - **Example**: `bugs_quicksearch("product:Firefox", status="NEW", limit=10)`
 
 - **`learn_quicksearch_syntax()`**: Provides access to the official Bugzilla quicksearch syntax documentation.
   - **Returns**: The quicksearch documentation content in HTML format
