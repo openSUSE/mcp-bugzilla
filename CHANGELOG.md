@@ -4,13 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
-## [0.8.0] - 2026-01-06
+## [Unreleased]
+
+## [v0.9.0] - 2026-02-05
+
+### Changed
+- bugs_quicksearch enhanced
+- test and README files reviewed
+- change CMD to ENTRYPOINT in Dockerfile
+
+### Fixed
+- fixed bug in learn_quicksearch_syntax
+
+## [v0.8.0] - 2026-01-06
 
 ### Added
 
 * handle api response failures using `httpx-retries` library 
 
-Several New Improvements introduced by [@SanthoshSiddegowda](https://github.com/SanthoshSiddegowda)
+Several New Improvements by [@SanthoshSiddegowda](https://github.com/SanthoshSiddegowda)
   *   **Async Refactor**: Switched from synchronous `httpx` logic to `httpx.AsyncClient` across `mcp_utils.py` and `server.py`. All MCP tools (`bug_info`, `bug_comments`, etc.) are now `async` functions, allowing for non-blocking concurrent request handling.
   *   **Thread-Safety**: Introduced `contextvars` to manage the `Bugzilla` client instance per request context. This ensures that the server is safe for concurrent use and prevents race conditions with API keys or session state.
   *   **Resource Management**: Implemented proper cleanup logic in the middleware to ensure the HTTP client is closed after every request.
