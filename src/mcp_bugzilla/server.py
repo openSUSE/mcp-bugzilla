@@ -27,6 +27,7 @@ cli_args: dict[str, Any] = {}
 # Global variable to hold the base_url, set by the start() function
 base_url: str = ""
 
+
 # check for the required headers which contain the api_key header
 # required by all the tools & prompts to make the api calls
 class ValidateHeaders(Middleware):
@@ -82,7 +83,9 @@ async def bug_info(id: int) -> dict[str, Any]:
 
 
 @mcp.tool()
-async def bug_comments(id: int, include_private_comments: bool = False) -> List[dict[str, Any]]:
+async def bug_comments(
+    id: int, include_private_comments: bool = False
+) -> List[dict[str, Any]]:
     """Returns the comments of given bug id
     Private comments are not included by default
     but can be explicitely requested
@@ -111,7 +114,9 @@ async def bug_comments(id: int, include_private_comments: bool = False) -> List[
 
 
 @mcp.tool()
-async def add_comment(bug_id: int, comment: str, is_private: bool = False) -> dict[str, int]:
+async def add_comment(
+    bug_id: int, comment: str, is_private: bool = False
+) -> dict[str, int]:
     """Add a comment to a bug. It can optionally be private. If success, returns the created comment id."""
     mcp_log.info(
         f"[LLM-REQ] add_comment(bug_id={bug_id}, comment='{comment}', is_private={is_private})"
@@ -128,12 +133,14 @@ async def add_comment(bug_id: int, comment: str, is_private: bool = False) -> di
 async def bugs_quicksearch(
     query: str,
     status: Optional[str] = "ALL",
-    include_fields: Optional[str] = "id,product,component,assigned_to,status,resolution,summary,last_change_time",
+    include_fields: Optional[
+        str
+    ] = "id,product,component,assigned_to,status,resolution,summary,last_change_time",
     limit: Optional[int] = 50,
-    offset: Optional[int] = 0
+    offset: Optional[int] = 0,
 ) -> List[Any]:
     """Search bugs using bugzilla's quicksearch syntax
-    
+
     To reduce the token limit & response time, only returns a subset of fields for each bug
     The user can query full details of each bug using the bug_info tool
     """
@@ -166,13 +173,15 @@ async def learn_quicksearch_syntax() -> str:
         # We can use the client to fetch this page too, though it's not a rest API
         # Using the underlying client for convenience
         url = f"{bz.base_url}/page.cgi"
-        r = await bz.client.get(url,params={"id": "quicksearch.html"})  # Use absolute URL since base_url of client is /rest
-        
+        r = await bz.client.get(
+            url, params={"id": "quicksearch.html"}
+        )  # Use absolute URL since base_url of client is /rest
+
         # Wait, bz.client.base_url is .../rest.
         # So we should use a new request or adjust.
         # Actually easier to just use a new async request or reuse the client without prefix if possible.
         # httpx client handles absolute URLs by ignoring base_url.
-        
+
         if r.status_code != 200:
             raise PromptError(
                 f"Failed to fetch bugzilla quicksearch_syntax with status code {r.status_code}"
@@ -220,7 +229,7 @@ def get_current_headers() -> dict[str, Any]:
 @mcp.prompt()
 async def summarize_bug_comments(id: int) -> str:
     """Summarizes all the comments of a bug"""
-    
+
     mcp_log.info(f"[LLM-REQ] summarize_bug_comments(id={id})")
 
     try:
