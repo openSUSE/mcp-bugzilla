@@ -233,6 +233,27 @@ async def summarize_bug_comments(id: int, bz: Bugzilla = Depends(get_bz)) -> str
         raise PromptError(f"Summarize Comments Failed\nReason: {e}")
 
 
+def apply_component_disability():
+    """
+    Disables MCP components based on environment variables.
+    Convention: MCP_BUGZILLA_DISABLE_<COMPONENT_NAME_UPPER>
+    """
+    import os
+
+    # Iterate over all registered components in the local provider
+    # This includes tools and prompts registered via decorators
+    for key, component in mcp.local_provider._components.items():
+        # Get the base name (tools and prompts have a 'name' attribute)
+        name = getattr(component, "name", None)
+        if not name:
+            continue
+
+        env_var = f"MCP_BUGZILLA_DISABLE_{name.upper()}"
+        if os.getenv(env_var) == "true":
+            mcp_log.info(f"Disabling component {key} via {env_var}")
+            mcp.disable(keys={key})
+
+
 def start():
     """
     Starts the FastMCP server for Bugzilla.
@@ -243,4 +264,8 @@ def start():
     if base_url.endswith("/"):
         base_url = base_url[:-1]
 
+    # Apply disability rules before running the server
+    apply_component_disability()
+
+    mcp_log.info(f"Starting Bugzilla MCP server on {cli_args['host']}:{cli_args['port']}")
     mcp.run(transport="http", host=cli_args["host"], port=cli_args["port"])
