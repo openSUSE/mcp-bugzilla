@@ -8,7 +8,6 @@ License: Apache 2.0
 
 import logging
 import os
-from contextvars import ContextVar
 from typing import Any, Optional
 from httpx_retries import RetryTransport
 import httpx
@@ -54,10 +53,6 @@ mcp_log.setLevel(os.getenv("LOG_LEVEL", "INFO").upper())
 mcp_log.addHandler(handler)
 mcp_log.propagate = False
 
-# ContextVar to hold the Bugzilla client instance for the current context
-bugzilla_client: ContextVar[Optional["Bugzilla"]] = ContextVar(
-    "bugzilla_client", default=None
-)
 
 
 class Bugzilla:
