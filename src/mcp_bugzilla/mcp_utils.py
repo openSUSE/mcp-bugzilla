@@ -58,16 +58,22 @@ mcp_log.propagate = False
 class Bugzilla:
     """Async Bugzilla API client"""
 
-    def __init__(self, url: str, api_key: str):
+    def __init__(self, url: str, api_key: str, use_auth_header: bool = False):
         self.base_url = url.rstrip("/")
         self.api_url = f"{self.base_url}/rest"
         self.api_key = api_key
+        params={},
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        if use_auth_header:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        else:
+            params["api_key"] = self.api_key
         # We'll use a single client for the instance
         self.client = httpx.AsyncClient(
             base_url=self.api_url,
-            params={"api_key": self.api_key},
+            params=params,
             timeout=30.0,
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            headers=headers,
             transport=RetryTransport(),
         )
 

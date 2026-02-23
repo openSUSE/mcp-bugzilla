@@ -133,6 +133,7 @@ The `mcp-bugzilla` command supports the following options:
 | `--host <ADDRESS>` | `MCP_HOST` | `127.0.0.1` | Host address for the MCP server to listen on |
 | `--port <PORT>` | `MCP_PORT` | `8000` | Port for the MCP server to listen on |
 | `--api-key-header <HEADER_NAME>` | `MCP_API_KEY_HEADER` | `ApiKey` | HTTP header name for the Bugzilla API key |
+| `--use-auth-header` | `USE_AUTH_HEADER` | `False` | Use `Authorization: Bearer` header instead of `api_key` query parameter |
 
 **Note**: Command-line arguments take precedence over environment variables.
 
@@ -224,6 +225,37 @@ http://127.0.0.1:8000/mcp/
      -H "Content-Type: application/json" \
      -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "server_url_resource"}, "id": 1}'
    ```
+
+### Authentication Methods
+
+This server supports two authentication methods for communicating with Bugzilla:
+
+#### Method 1: Query Parameter (Default)
+
+By default, the server sends the API key as a query parameter in the URL:
+```bash
+mcp-bugzilla --bugzilla-server https://bugzilla.example.com
+```
+
+This works with standard Bugzilla instances (Mozilla Bugzilla, openSUSE Bugzilla, etc.).
+
+#### Method 2: Authorization Header (for enterprise instances)
+
+Some Bugzilla instances (such as Red Hat Bugzilla) require the API key to be sent via the `Authorization: Bearer` header instead of as a query parameter. Use the `--use-auth-header` flag for these instances:
+```bash
+mcp-bugzilla --bugzilla-server https://bugzilla.redhat.com --use-auth-header
+```
+
+**When to use `--use-auth-header`:**
+- Red Hat Bugzilla (bugzilla.redhat.com)
+- Other enterprise Bugzilla instances that reject `api_key` query parameters
+- Bugzilla instances with strict authentication requirements
+
+**How it works:**
+- **With `--use-auth-header`**: Sends `Authorization: Bearer YOUR_API_KEY` header to Bugzilla
+- **Without `--use-auth-header`** (default): Sends `?api_key=YOUR_API_KEY` query parameter to Bugzilla
+
+**Note**: The `--api-key-header` option controls which header name the *MCP server* expects from *clients*, while `--use-auth-header` controls how the *MCP server* authenticates with *Bugzilla*. These are independent settings.
 
 ### MCP Client Integration
 
@@ -342,6 +374,24 @@ bugs_quicksearch("product:Firefox component:JavaScript status:NEW priority:P1")
 # Use pagination
 page1 = bugs_quicksearch("status:NEW", limit=50, offset=0)
 page2 = bugs_quicksearch("status:NEW", limit=50, offset=50)
+```
+
+### Example 6: Using with Red Hat Bugzilla
+
+Red Hat Bugzilla requires Authorization header authentication:
+```bash
+# Start the server with --use-auth-header flag
+mcp-bugzilla \
+  --bugzilla-server https://bugzilla.redhat.com \
+  --use-auth-header \
+  --host 127.0.0.1 \
+  --port 8000
+
+# Client connects normally - the flag only affects server-to-Bugzilla communication
+curl -X POST http://127.0.0.1:8000/mcp/ \
+  -H "ApiKey: YOUR_API_KEY_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "server_url"}, "id": 1}'
 ```
 
 ## Troubleshooting

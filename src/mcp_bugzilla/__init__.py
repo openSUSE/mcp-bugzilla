@@ -37,6 +37,12 @@ def main():
         help="HTTP header for clients to send the Bugzilla API key. Defaults to 'ApiKey' or MCP_API_KEY_HEADER environment variable.",
     )
 
+    parser.add_argument(
+        "--use-auth-header",
+        action="store_true",
+        help="Use Authorization: Bearer header instead of api_key query parameter (required for some Bugzilla instances)"
+    )
+
     args = parser.parse_args()
 
     # The default behavior of argparse with os.getenv already handles the priority:

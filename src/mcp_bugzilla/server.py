@@ -41,7 +41,11 @@ async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
         raise ValidationError(f"`{api_key_header}` header is required")
 
     mcp_log.debug("api_key: Found")
-    bz = Bugzilla(url=base_url, api_key=api_key_value)
+    bz = Bugzilla(
+        url=base_url,
+        api_key=api_key_value,
+        use_auth_header=cli_args.get("use_auth_header", False)
+    )
     try:
         yield bz
     finally:
