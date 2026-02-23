@@ -15,6 +15,7 @@ import httpx
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
 from fastmcp.exceptions import PromptError, ToolError, ValidationError
+from fastmcp.server.transforms import PromptsAsTools, ResourcesAsTools
 from typing import Optional
 
 from .mcp_utils import Bugzilla, mcp_log
@@ -70,7 +71,7 @@ async def bug_comments(
 ) -> List[dict[str, Any]]:
     """Returns the comments of given bug id
     Private comments are not included by default
-    but can be explicitely requested
+    but can be explicitly requested
     """
 
     mcp_log.info(
@@ -121,7 +122,7 @@ async def bugs_quicksearch(
     bz: Bugzilla = Depends(get_bz),
 ) -> List[Any]:
     """Search bugs using bugzilla's quicksearch syntax
-
+    
     To reduce the token limit & response time, only returns a subset of fields for each bug
     The user can query full details of each bug using the bug_info tool
     """
@@ -141,12 +142,11 @@ async def bugs_quicksearch(
         raise ToolError(f"Search failed: {e}")
 
 
-@mcp.tool()
+@mcp.resource("documentation://quicksearch")
 async def learn_quicksearch_syntax(bz: Bugzilla = Depends(get_bz)) -> str:
-    """Access the documentation of the bugzilla quicksearch syntax.
-    LLM can learn using this tool. Response is in HTML"""
+    """Access the documentation of the bugzilla quicksearch syntax."""
 
-    mcp_log.info("[LLM-REQ] learn_quicksearch_syntax()")
+    mcp_log.info("[LLM-REQ] read documentation://quicksearch")
 
     try:
         # We can use the client to fetch this page too, though it's not a rest API
@@ -156,28 +156,21 @@ async def learn_quicksearch_syntax(bz: Bugzilla = Depends(get_bz)) -> str:
             url, params={"id": "quicksearch.html"}
         )  # Use absolute URL since base_url of client is /rest
 
-        # Wait, bz.client.base_url is .../rest.
-        # So we should use a new request or adjust.
-        # Actually easier to just use a new async request or reuse the client without prefix if possible.
-        # httpx client handles absolute URLs by ignoring base_url.
-
         if r.status_code != 200:
-            raise PromptError(
+            raise ToolError(
                 f"Failed to fetch bugzilla quicksearch_syntax with status code {r.status_code}"
             )
 
         mcp_log.info(f"[LLM-RES] Fetched {len(r.text)} chars of documentation")
         return r.text
     except Exception as e:
-        raise PromptError(f"Failed to fetch quicksearch documentation: {e}")
+        raise ToolError(f"Failed to fetch quicksearch documentation: {e}")
 
 
-@mcp.tool()
+@mcp.resource("info://server-url")
 def server_url() -> str:
     """bugzilla server's base url"""
-    mcp_log.info("[LLM-REQ] server_url()")
-    # server_url is static per instance, doesn't need BZ client really,
-    # but base_url global is fine as it's set at startup.
+    mcp_log.info("[LLM-REQ] read info://server-url")
     return base_url
 
 
@@ -185,24 +178,23 @@ def server_url() -> str:
 def bug_url(bug_id: int) -> str:
     """returns the bug url"""
     mcp_log.info(f"[LLM-REQ] bug_url(bug_id={bug_id})")
-    # This just constructs a URL string, so sync is fine.
     return f"{base_url}/show_bug.cgi?id={bug_id}"
 
 
-@mcp.tool()
+@mcp.resource("info://mcp-server")
 def mcp_server_info() -> dict[str, Any]:
     """Returns the args being used by the current server instance"""
-    mcp_log.info("[LLM-REQ] mcp_server_info()")
+    mcp_log.info("[LLM-REQ] read info://mcp-server")
     info = cli_args.copy()
     info["version"] = importlib.metadata.version("mcp-bugzilla")
     return info
 
 
-@mcp.tool()
-def get_current_headers() -> dict[str, Any]:
+@mcp.resource("info://current-headers")
+def get_current_headers(headers: dict = CurrentHeaders()) -> dict[str, Any]:
     """Returns the headers being provided by the current http request"""
-    mcp_log.info("[LLM-REQ] get_current_headers()")
-    return get_http_headers()
+    mcp_log.info("[LLM-REQ] read info://current-headers")
+    return headers
 
 
 @mcp.prompt()
@@ -233,7 +225,7 @@ async def summarize_bug_comments(id: int, bz: Bugzilla = Depends(get_bz)) -> str
         raise PromptError(f"Summarize Comments Failed\nReason: {e}")
 
 
-def apply_component_disability():
+def disable_components_selectively():
     """
     Disables MCP components based on environment variables.
     Convention: MCP_BUGZILLA_DISABLE_<COMPONENT_NAME_UPPER>
@@ -264,8 +256,13 @@ def start():
     if base_url.endswith("/"):
         base_url = base_url[:-1]
 
-    # Apply disability rules before running the server
-    apply_component_disability()
+    # Seletively disable components before running the server
+    disable_components_selectively()
 
     mcp_log.info(f"Starting Bugzilla MCP server on {cli_args['host']}:{cli_args['port']}")
+
+    # Add transforms to expose resources and prompts as tools
+    mcp.add_transform(ResourcesAsTools(mcp))
+    mcp.add_transform(PromptsAsTools(mcp))
+
     mcp.run(transport="http", host=cli_args["host"], port=cli_args["port"])
