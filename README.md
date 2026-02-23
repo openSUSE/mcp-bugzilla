@@ -64,23 +64,26 @@ The server provides the following tools for interacting with Bugzilla:
   - **Note**: Returns a curated subset of fields to optimize token usage. Use `bug_info()` to get full details for specific bugs.
   - **Example**: `bugs_quicksearch("product:Firefox", status="NEW", limit=10)`
 
-- **`learn_quicksearch_syntax()`**: Provides access to the official Bugzilla quicksearch syntax documentation.
-  - **Returns**: The quicksearch documentation content in HTML format
-  - **Use case**: Allows LLMs to learn and formulate effective search queries dynamically
-
 #### Utility Tools
-
-- **`server_url()`**: Returns the base URL of the configured Bugzilla server.
-  - **Returns**: A string representing the base URL (e.g., `"https://bugzilla.example.com"`)
 
 - **`bug_url(bug_id: int)`**: Constructs and returns the direct URL to a specific bug on the Bugzilla server.
   - **Returns**: A string representing the bug's URL (e.g., `"https://bugzilla.example.com/show_bug.cgi?id=12345"`)
 
-- **`mcp_server_info()`**: Returns the configuration arguments being used by the current server instance.
-  - **Returns**: A dictionary containing server configuration including version, host, port, and API key header name
+### Resources
 
-- **`get_current_headers()`**: Returns the HTTP headers from the current request.
-  - **Returns**: A dictionary of HTTP headers (useful for debugging authentication)
+The server exposes several resources for documentation and server information:
+
+- **`documentation://quicksearch`**: Provides access to the official Bugzilla quicksearch syntax documentation.
+  - **Use case**: Allows LLMs to learn and formulate effective search queries dynamically.
+
+- **`info://server-url`**: Returns the base URL of the configured Bugzilla server.
+  - **Returns**: A string representing the base URL (e.g., `"https://bugzilla.example.com"`)
+
+- **`info://mcp-server`**: Returns the configuration arguments being used by the current server instance.
+  - **Returns**: A dictionary containing server configuration including version, host, port, and API key header name.
+
+- **`info://current-headers`**: Returns the HTTP headers from the current request.
+  - **Returns**: A dictionary of HTTP headers (useful for debugging authentication).
 
 ### Prompts
 
@@ -162,8 +165,28 @@ export MCP_PORT=8000
 export MCP_API_KEY_HEADER=ApiKey
 export LOG_LEVEL=INFO  # Optional: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
+# Selective Disabling (Optional)
+export MCP_BUGZILLA_DISABLE_<COMPONENT_NAME_UPPER>=true
+
 mcp-bugzilla
 ```
+
+### Component Disabling
+
+The server allows you to selectively disable specific tools or prompts using environment variables. This is useful for restricting functionality based on security or resource requirements.
+
+**Convention**: `MCP_BUGZILLA_DISABLE_<COMPONENT_NAME_UPPER>=true`
+
+| Component | Environment Variable |
+|-----------|----------------------|
+| `bug_info` (tool) | `MCP_BUGZILLA_DISABLE_BUG_INFO` |
+| `bug_comments` (tool) | `MCP_BUGZILLA_DISABLE_BUG_COMMENTS` |
+| `add_comment` (tool) | `MCP_BUGZILLA_DISABLE_ADD_COMMENT` |
+| `bugs_quicksearch` (tool) | `MCP_BUGZILLA_DISABLE_BUGS_QUICKSEARCH` |
+| `bug_url` (tool) | `MCP_BUGZILLA_DISABLE_BUG_URL` |
+| `summarize_bug_comments` (prompt) | `MCP_BUGZILLA_DISABLE_SUMMARIZE_BUG_COMMENTS` |
+
+**Note**: Resources (like `info://server-url`) cannot be disabled via this mechanism.
 
 ## Usage
 
