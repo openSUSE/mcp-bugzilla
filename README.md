@@ -52,47 +52,29 @@ The server provides the following tools for interacting with Bugzilla:
     - `include_fields`: Comma-separated list of fields to return (default: `"id,product,component,assigned_to,status,resolution,summary,last_change_time"`)
     - `limit`: Maximum number of results to return (default: `50`)
     - `offset`: Number of results to skip for pagination (default: `0`)
-  - **Returns**: A list of dictionaries, each containing essential bug fields:
-    - `bug_id`: The bug ID
-    - `product`: Product name
-    - `component`: Component name
-    - `assigned_to`: Assigned user email
-    - `status`: Current status
-    - `resolution`: Resolution (if resolved)
-    - `summary`: Bug summary
-    - `last_updated`: Last update timestamp
-  - **Note**: Returns a curated subset of fields to optimize token usage. Use `bug_info()` to get full details for specific bugs.
+  - **Returns**: A list of dictionaries, each containing essential bug fields
   - **Example**: `bugs_quicksearch("product:Firefox", status="NEW", limit=10)`
+
+- **`quicksearch_syntax_resource()`**: Returns documentation on Bugzilla's quicksearch syntax.
+  - **Returns**: A string containing HTML documentation.
+
+- **`summarize_bug_prompt(id: int)`**: Returns a detailed summary prompt for all comments of a given bug ID.
+  - **Returns**: A well-structured summary of the bug's comments including usernames (bold italic) and dates (bold).
 
 #### Utility Tools
 
 - **`bug_url(bug_id: int)`**: Constructs and returns the direct URL to a specific bug on the Bugzilla server.
   - **Returns**: A string representing the bug's URL (e.g., `"https://bugzilla.example.com/show_bug.cgi?id=12345"`)
 
-### Resources
+- **`server_url_resource()`**: Returns the base URL of the configured Bugzilla server.
+  - **Returns**: A string representing the base URL.
 
-The server exposes several resources for documentation and server information:
+- **`mcp_server_info_resource()`**: Returns the configuration arguments being used by the current server instance (version, host, port, etc.).
+  - **Returns**: A dictionary containing server configuration.
 
-- **`doc://quicksearch`**: Provides access to the official Bugzilla quicksearch syntax documentation.
-  - **Use case**: Allows LLMs to learn and formulate effective search queries dynamically.
+- **`get_current_headers_resource()`**: Returns the HTTP headers from the current request.
+  - **Returns**: A dictionary of HTTP headers.
 
-- **`info://server-url`**: Returns the base URL of the configured Bugzilla server.
-  - **Returns**: A string representing the base URL (e.g., `"https://bugzilla.example.com"`)
-
-- **`info://mcp-server`**: Returns the configuration arguments being used by the current server instance.
-  - **Returns**: A dictionary containing server configuration including version, host, port, and API key header name.
-
-- **`info://current-headers`**: Returns the HTTP headers from the current request.
-  - **Returns**: A dictionary of HTTP headers (useful for debugging authentication).
-
-### Prompts
-
-The server provides the following prompt templates:
-
-- **`summarize_bug_comments(id: int)`**: Generates a detailed summary prompt for all comments of a given bug ID.
-  - **Returns**: A well-structured prompt that, when used with an LLM, produces a formatted summary of the bug's comments
-  - **Format**: Includes usernames (bold italic), dates (bold), and human-readable timestamps
-  - **Example**: `summarize_bug_comments(12345)` returns a prompt that can be used to generate a comment summary
 
 ## Requirements
 
@@ -184,9 +166,8 @@ The server allows you to selectively disable specific tools or prompts using an 
 | `add_comment` (tool) | `ADD_COMMENT` |
 | `bugs_quicksearch` (tool) | `BUGS_QUICKSEARCH` |
 | `bug_url` (tool) | `BUG_URL` |
-| `summarize_bug_comments` (prompt) | `SUMMARIZE_BUG_COMMENTS` |
+| `summarize_bug_prompt` | `SUMMARIZE_BUG_PROMPT` |
 
-**Note**: Resources (like `info://server-url`) cannot be disabled via this mechanism.
 
 ## Usage
 
@@ -241,7 +222,7 @@ http://127.0.0.1:8000/mcp/
    curl -X POST http://127.0.0.1:8000/mcp/ \
      -H "ApiKey: YOUR_API_KEY_HERE" \
      -H "Content-Type: application/json" \
-     -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "server_url"}, "id": 1}'
+     -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "server_url_resource"}, "id": 1}'
    ```
 
 ### MCP Client Integration

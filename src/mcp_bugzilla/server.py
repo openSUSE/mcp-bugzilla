@@ -15,7 +15,6 @@ import httpx
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
 from fastmcp.exceptions import PromptError, ResourceError, ToolError, ValidationError
-from fastmcp.server.transforms import PromptsAsTools, ResourcesAsTools
 from typing import Optional
 
 from .mcp_utils import Bugzilla, mcp_log
@@ -142,11 +141,11 @@ async def bugs_quicksearch(
         raise ToolError(f"Search failed: {e}")
 
 
-@mcp.resource("doc://quicksearch")
-async def learn_quicksearch_syntax(bz: Bugzilla = Depends(get_bz)) -> str:
-    """Access the documentation of the bugzilla quicksearch syntax."""
+@mcp.tool()
+async def quicksearch_syntax_resource(bz: Bugzilla = Depends(get_bz)) -> str:
+    """Access the documentation of the bugzilla quicksearch syntax. LLM can learn using this tool. Response is in HTML"""
 
-    mcp_log.info("[LLM-REQ] read doc://quicksearch")
+    mcp_log.info("[LLM-REQ] quicksearch_syntax_resource()")
 
     try:
         # We can use the client to fetch this page too, though it's not a rest API
@@ -167,10 +166,10 @@ async def learn_quicksearch_syntax(bz: Bugzilla = Depends(get_bz)) -> str:
         raise ResourceError(f"Failed to fetch quicksearch documentation: {e}")
 
 
-@mcp.resource("info://server-url")
-def server_url() -> str:
+@mcp.tool()
+def server_url_resource() -> str:
     """bugzilla server's base url"""
-    mcp_log.info("[LLM-REQ] read info://server-url")
+    mcp_log.info("[LLM-REQ] server_url_resource()")
     return base_url
 
 
@@ -181,27 +180,27 @@ def bug_url(bug_id: int) -> str:
     return f"{base_url}/show_bug.cgi?id={bug_id}"
 
 
-@mcp.resource("info://mcp-server")
-def mcp_server_info() -> dict[str, Any]:
+@mcp.tool()
+def mcp_server_info_resource() -> dict[str, Any]:
     """Returns the args being used by the current server instance"""
-    mcp_log.info("[LLM-REQ] read info://mcp-server")
+    mcp_log.info("[LLM-REQ] mcp_server_info_resource()")
     info = cli_args.copy()
     info["version"] = importlib.metadata.version("mcp-bugzilla")
     return info
 
 
-@mcp.resource("info://current-headers")
-def get_current_headers(headers: dict = CurrentHeaders()) -> dict[str, Any]:
+@mcp.tool()
+def get_current_headers_resource(headers: dict = CurrentHeaders()) -> dict[str, Any]:
     """Returns the headers being provided by the current http request"""
-    mcp_log.info("[LLM-REQ] read info://current-headers")
+    mcp_log.info("[LLM-REQ] get_current_headers_resource()")
     return headers
 
 
-@mcp.prompt()
-async def summarize_bug_comments(id: int, bz: Bugzilla = Depends(get_bz)) -> str:
+@mcp.tool()
+async def summarize_bug_prompt(id: int, bz: Bugzilla = Depends(get_bz)) -> str:
     """Summarizes all the comments of a bug"""
 
-    mcp_log.info(f"[LLM-REQ] summarize_bug_comments(id={id})")
+    mcp_log.info(f"[LLM-REQ] summarize_bug_prompt(id={id})")
 
     try:
         comments = await bz.bug_comments(id)
@@ -263,9 +262,5 @@ def start():
     disable_components_selectively()
 
     mcp_log.info(f"Starting Bugzilla MCP server on {cli_args['host']}:{cli_args['port']}")
-
-    # Add transforms to expose resources and prompts as tools
-    mcp.add_transform(ResourcesAsTools(mcp))
-    mcp.add_transform(PromptsAsTools(mcp))
 
     mcp.run(transport="http", host=cli_args["host"], port=cli_args["port"])
