@@ -73,7 +73,7 @@ The server provides the following tools for interacting with Bugzilla:
 
 The server exposes several resources for documentation and server information:
 
-- **`documentation://quicksearch`**: Provides access to the official Bugzilla quicksearch syntax documentation.
+- **`doc://quicksearch`**: Provides access to the official Bugzilla quicksearch syntax documentation.
   - **Use case**: Allows LLMs to learn and formulate effective search queries dynamically.
 
 - **`info://server-url`**: Returns the base URL of the configured Bugzilla server.
@@ -166,25 +166,25 @@ export MCP_API_KEY_HEADER=ApiKey
 export LOG_LEVEL=INFO  # Optional: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 # Selective Disabling (Optional)
-export MCP_BUGZILLA_DISABLE_<COMPONENT_NAME_UPPER>=true
+export MCP_BUGZILLA_DISABLED_METHODS=bug_info,bug_comments
 
 mcp-bugzilla
 ```
 
 ### Component Disabling
 
-The server allows you to selectively disable specific tools or prompts using environment variables. This is useful for restricting functionality based on security or resource requirements.
+The server allows you to selectively disable specific tools or prompts using an environment variable. This is useful for restricting functionality based on security or resource requirements.
 
-**Convention**: `MCP_BUGZILLA_DISABLE_<COMPONENT_NAME_UPPER>=true`
+**Method**: `MCP_BUGZILLA_DISABLED_METHODS=component1,component2`
 
-| Component | Environment Variable |
-|-----------|----------------------|
-| `bug_info` (tool) | `MCP_BUGZILLA_DISABLE_BUG_INFO` |
-| `bug_comments` (tool) | `MCP_BUGZILLA_DISABLE_BUG_COMMENTS` |
-| `add_comment` (tool) | `MCP_BUGZILLA_DISABLE_ADD_COMMENT` |
-| `bugs_quicksearch` (tool) | `MCP_BUGZILLA_DISABLE_BUGS_QUICKSEARCH` |
-| `bug_url` (tool) | `MCP_BUGZILLA_DISABLE_BUG_URL` |
-| `summarize_bug_comments` (prompt) | `MCP_BUGZILLA_DISABLE_SUMMARIZE_BUG_COMMENTS` |
+| Component | Name in `MCP_BUGZILLA_DISABLED_METHODS` |
+|-----------|------------------------------------------|
+| `bug_info` (tool) | `BUG_INFO` |
+| `bug_comments` (tool) | `BUG_COMMENTS` |
+| `add_comment` (tool) | `ADD_COMMENT` |
+| `bugs_quicksearch` (tool) | `BUGS_QUICKSEARCH` |
+| `bug_url` (tool) | `BUG_URL` |
+| `summarize_bug_comments` (prompt) | `SUMMARIZE_BUG_COMMENTS` |
 
 **Note**: Resources (like `info://server-url`) cannot be disabled via this mechanism.
 
