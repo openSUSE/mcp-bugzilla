@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 import httpx
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
-from fastmcp.exceptions import PromptError, ToolError, ValidationError
+from fastmcp.exceptions import PromptError, ResourceError, ToolError, ValidationError
 from fastmcp.server.transforms import PromptsAsTools, ResourcesAsTools
 from typing import Optional
 
@@ -142,11 +142,11 @@ async def bugs_quicksearch(
         raise ToolError(f"Search failed: {e}")
 
 
-@mcp.resource("documentation://quicksearch")
+@mcp.resource("doc://quicksearch")
 async def learn_quicksearch_syntax(bz: Bugzilla = Depends(get_bz)) -> str:
     """Access the documentation of the bugzilla quicksearch syntax."""
 
-    mcp_log.info("[LLM-REQ] read documentation://quicksearch")
+    mcp_log.info("[LLM-REQ] read doc://quicksearch")
 
     try:
         # We can use the client to fetch this page too, though it's not a rest API
@@ -157,14 +157,14 @@ async def learn_quicksearch_syntax(bz: Bugzilla = Depends(get_bz)) -> str:
         )  # Use absolute URL since base_url of client is /rest
 
         if r.status_code != 200:
-            raise ToolError(
+            raise ResourceError(
                 f"Failed to fetch bugzilla quicksearch_syntax with status code {r.status_code}"
             )
 
         mcp_log.info(f"[LLM-RES] Fetched {len(r.text)} chars of documentation")
         return r.text
     except Exception as e:
-        raise ToolError(f"Failed to fetch quicksearch documentation: {e}")
+        raise ResourceError(f"Failed to fetch quicksearch documentation: {e}")
 
 
 @mcp.resource("info://server-url")
@@ -228,21 +228,24 @@ async def summarize_bug_comments(id: int, bz: Bugzilla = Depends(get_bz)) -> str
 def disable_components_selectively():
     """
     Disables MCP components based on environment variables.
-    Convention: MCP_BUGZILLA_DISABLE_<COMPONENT_NAME_UPPER>
+    Convention: MCP_BUGZILLA_DISABLED_METHODS=component1,component2
     """
     import os
 
+    # Comma-separated list in MCP_BUGZILLA_DISABLED_METHODS
+    disabled_list = os.getenv("MCP_BUGZILLA_DISABLED_METHODS", "").split(",")
+    disabled_list = [d.strip().upper() for d in disabled_list if d.strip()]
+
     # Iterate over all registered components in the local provider
-    # This includes tools and prompts registered via decorators
     for key, component in mcp.local_provider._components.items():
-        # Get the base name (tools and prompts have a 'name' attribute)
         name = getattr(component, "name", None)
         if not name:
             continue
 
-        env_var = f"MCP_BUGZILLA_DISABLE_{name.upper()}"
-        if os.getenv(env_var) == "true":
-            mcp_log.info(f"Disabling component {key} via {env_var}")
+        name_upper = name.upper()
+
+        if name_upper in disabled_list:
+            mcp_log.info(f"Disabling component {key} via MCP_BUGZILLA_DISABLED_METHODS")
             mcp.disable(keys={key})
 
 
