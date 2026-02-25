@@ -62,8 +62,8 @@ class Bugzilla:
         self.base_url = url.rstrip("/")
         self.api_url = f"{self.base_url}/rest"
         self.api_key = api_key
-        params={},
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        params={}
+        headers={"Content-Type": "application/json", "Accept": "application/json"}
         if use_auth_header:
             headers["Authorization"] = f"Bearer {self.api_key}"
         else:
