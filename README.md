@@ -148,26 +148,17 @@ export MCP_PORT=8000
 export MCP_API_KEY_HEADER=ApiKey
 export LOG_LEVEL=INFO  # Optional: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
-# Selective Disabling (Optional)
-export MCP_BUGZILLA_DISABLED_METHODS=bug_info,bug_comments
+# Selective Disabling Tools (Optional)
+export MCP_BUGZILLA_DISABLED_METHODS='bug_info,bug_comments'
 
 mcp-bugzilla
 ```
 
-### Component Disabling
+### Methods Disabling
 
 The server allows you to selectively disable specific tools or prompts using an environment variable. This is useful for restricting functionality based on security or resource requirements.
 
-**Method**: `MCP_BUGZILLA_DISABLED_METHODS=component1,component2`
-
-| Component | Name in `MCP_BUGZILLA_DISABLED_METHODS` |
-|-----------|------------------------------------------|
-| `bug_info` (tool) | `BUG_INFO` |
-| `bug_comments` (tool) | `BUG_COMMENTS` |
-| `add_comment` (tool) | `ADD_COMMENT` |
-| `bugs_quicksearch` (tool) | `BUGS_QUICKSEARCH` |
-| `bug_url` (tool) | `BUG_URL` |
-| `summarize_bug_prompt` | `SUMMARIZE_BUG_PROMPT` |
+**Method**: `MCP_BUGZILLA_DISABLED_METHODS=tool1,tool2`
 
 
 ## Usage
