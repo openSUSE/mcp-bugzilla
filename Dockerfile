@@ -2,7 +2,15 @@
 #!UseOBSRepositories
 
 FROM registry.opensuse.org/opensuse/bci/python:3.13
+
 COPY . /app
+
 WORKDIR /app
+
 RUN zypper --non-interactive in python313-uv && uv sync --locked
+
+RUN useradd -m -u 1001 -d /home/bz bz
+
+USER 1001
+
 ENTRYPOINT ["uv", "run", "mcp-bugzilla"]
