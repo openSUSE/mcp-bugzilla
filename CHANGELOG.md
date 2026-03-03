@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
-## [v0.10.0]
+## [v0.10.0] - 2026-03-03
 
 ### Added
 - Some Bugzilla instances require `Authorization: Bearer` header instead of api_key query parameters. Add CLI flag to support both methods while maintaining backward compatibility. [#14](https://github.com/openSUSE/mcp-bugzilla/pull/14)
@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - All existing resources are converted as tools & renamed for wider mcp client compatibility [#13](https://github.com/openSUSE/mcp-bugzilla/pull/13)
 
 - Container process now runs with a lower user permission for improved security
+
+- Update dependencies
 
 Please refer the README for more info & examples
 
