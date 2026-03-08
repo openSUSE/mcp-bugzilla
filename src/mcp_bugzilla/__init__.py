@@ -58,6 +58,7 @@ def main():
     server.cli_args["host"] = args.host
     server.cli_args["port"] = args.port
     server.cli_args["api_key_header"] = args.api_key_header
+    server.cli_args["use_auth_header"] = args.use_auth_header
 
     server.start()
 
