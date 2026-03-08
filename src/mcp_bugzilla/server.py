@@ -228,6 +228,164 @@ async def summarize_bug_prompt(id: int, bz: Bugzilla = Depends(get_bz)) -> str:
         raise PromptError(f"Summarize Comments Failed\nReason: {e}")
 
 
+@mcp.tool()
+async def update_bug_status(
+    bug_id: int,
+    status: str,
+    resolution: Optional[str] = None,
+    comment: str = "",
+    bz: Bugzilla = Depends(get_bz)
+) -> dict[str, Any]:
+    """Update the status of a bug. Optionally add a comment explaining the status change.
+
+    Valid statuses: NEW, ASSIGNED, MODIFIED, ON_QA, VERIFIED, CLOSED
+    For CLOSED, you MUST also provide a resolution (FIXED, WONTFIX, NOTABUG, DUPLICATE, etc.)
+
+    Args:
+        bug_id: Bug ID to update
+        status: New status
+        resolution: Resolution (required when status is CLOSED)
+        comment: Optional comment explaining the change
+    """
+    mcp_log.info(
+        f"[LLM-REQ] update_bug_status(bug_id={bug_id}, status='{status}', resolution={resolution}, comment='{comment[:50] if comment else ''}...')"
+    )
+
+    updates = {"status": status}
+    if resolution:
+        updates["resolution"] = resolution
+
+    # Validate: CLOSED requires resolution
+    if status == "CLOSED" and not resolution:
+        raise ToolError("Resolution is required when setting status to CLOSED (e.g., FIXED, WONTFIX, NOTABUG, DUPLICATE)")
+
+    try:
+        result = await bz.update_bug(bug_id, updates, comment)
+        return result
+    except Exception as e:
+        raise ToolError(f"Failed to update bug status\n{e}")
+
+
+@mcp.tool()
+async def assign_bug(
+    bug_id: int,
+    assignee: str,
+    comment: str = "",
+    bz: Bugzilla = Depends(get_bz)
+) -> dict[str, Any]:
+    """Assign a bug to a user. Optionally add a comment.
+
+    Args:
+        bug_id: Bug ID to assign
+        assignee: Email address of the assignee
+        comment: Optional comment explaining the assignment
+    """
+    mcp_log.info(
+        f"[LLM-REQ] assign_bug(bug_id={bug_id}, assignee='{assignee}')"
+    )
+    try:
+        result = await bz.update_bug(bug_id, {"assigned_to": assignee}, comment)
+        return result
+    except Exception as e:
+        raise ToolError(f"Failed to assign bug\n{e}")
+
+
+@mcp.tool()
+async def update_bug_fields(
+    bug_id: int,
+    priority: Optional[str] = None,
+    severity: Optional[str] = None,
+    resolution: Optional[str] = None,
+    comment: str = "",
+    bz: Bugzilla = Depends(get_bz)
+) -> dict[str, Any]:
+    """Update various bug fields. All fields are optional.
+
+    Args:
+        bug_id: Bug ID to update
+        priority: Priority (e.g., urgent, high, medium, low, unspecified)
+        severity: Severity (e.g., urgent, high, medium, low, unspecified)
+        resolution: Resolution (e.g., FIXED, WONTFIX, NOTABUG, DUPLICATE) - only for closed bugs
+        comment: Optional comment explaining the changes
+    """
+    mcp_log.info(
+        f"[LLM-REQ] update_bug_fields(bug_id={bug_id}, priority={priority}, severity={severity}, resolution={resolution})"
+    )
+
+    updates = {}
+    if priority:
+        updates["priority"] = priority
+    if severity:
+        updates["severity"] = severity
+    if resolution:
+        updates["resolution"] = resolution
+
+    if not updates:
+        raise ToolError("At least one field must be specified")
+
+    try:
+        result = await bz.update_bug(bug_id, updates, comment)
+        return result
+    except Exception as e:
+        raise ToolError(f"Failed to update bug fields\n{e}")
+
+
+@mcp.tool()
+async def add_cc_to_bug(
+    bug_id: int,
+    cc_email: str,
+    bz: Bugzilla = Depends(get_bz)
+) -> dict[str, Any]:
+    """Add an email address to the CC list of a bug.
+
+    Args:
+        bug_id: Bug ID
+        cc_email: Email address to add to CC list
+    """
+    mcp_log.info(
+        f"[LLM-REQ] add_cc_to_bug(bug_id={bug_id}, cc_email='{cc_email}')"
+    )
+    try:
+        result = await bz.update_bug(bug_id, {"cc": {"add": [cc_email]}}, "")
+        return result
+    except Exception as e:
+        raise ToolError(f"Failed to add CC\n{e}")
+
+
+@mcp.tool()
+async def mark_as_duplicate(
+    bug_id: int,
+    duplicate_of: int,
+    comment: str = "",
+    bz: Bugzilla = Depends(get_bz)
+) -> dict[str, Any]:
+    """Mark a bug as a duplicate of another bug and close it.
+
+    Args:
+        bug_id: Bug ID to mark as duplicate
+        duplicate_of: Bug ID this is a duplicate of
+        comment: Optional comment (default: auto-generated)
+    """
+    mcp_log.info(
+        f"[LLM-REQ] mark_as_duplicate(bug_id={bug_id}, duplicate_of={duplicate_of})"
+    )
+
+    if not comment:
+        comment = f"Marking as duplicate of bug {duplicate_of}"
+
+    updates = {
+        "status": "CLOSED",
+        "resolution": "DUPLICATE",
+        "dupe_of": duplicate_of
+    }
+
+    try:
+        result = await bz.update_bug(bug_id, updates, comment)
+        return result
+    except Exception as e:
+        raise ToolError(f"Failed to mark as duplicate\n{e}")
+
+
 def disable_components_selectively():
     """
     Disables MCP components based on environment variables.

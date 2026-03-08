@@ -188,3 +188,29 @@ class Bugzilla:
         bugs = r.json().get("bugs", [])
         mcp_log.info(f"[BZ-RES] Found {len(bugs)} bugs")
         return bugs
+
+    async def update_bug(self, bug_id: int, updates: dict[str, Any], comment: str = "") -> dict[str, Any]:
+        """Update bug fields. Optionally add a comment with the update."""
+        payload = updates.copy()
+        if comment:
+            payload["comment"] = {"body": comment}
+
+        url = f"/bug/{bug_id}"
+        mcp_log.info(f"[BZ-REQ] PUT {self.api_url}{url} json={payload}")
+
+        try:
+            r = await self.client.put(url, json=payload)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            mcp_log.error(
+                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
+            )
+            raise
+        except httpx.RequestError as e:
+            mcp_log.error(f"[BZ-RES] Network Error: {e}")
+            raise
+
+        data = r.json()
+        mcp_log.info("[BZ-RES] Bug updated successfully")
+        mcp_log.debug(f"[BZ-RES] {data}")
+        return data
