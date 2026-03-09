@@ -70,19 +70,20 @@ async def bug_info(id: int, bz: Bugzilla = Depends(get_bz)) -> dict[str, Any]:
 
 @mcp.tool()
 async def bug_comments(
-    id: int, include_private_comments: bool = False, bz: Bugzilla = Depends(get_bz)
+    id: int, include_private_comments: bool = False, new_since: Optional[str] = None, bz: Bugzilla = Depends(get_bz)
 ) -> List[dict[str, Any]]:
     """Returns the comments of given bug id
     Private comments are not included by default
-    but can be explicitly requested
+    but can be explicitly requested.
+    new_since allows filtering comments newer than the given date.
     """
 
     mcp_log.info(
-        f"[LLM-REQ] bug_comments(id={id}, include_private_comments={include_private_comments})"
+        f"[LLM-REQ] bug_comments(id={id}, include_private_comments={include_private_comments}, new_since={new_since})"
     )
 
     try:
-        all_comments = await bz.bug_comments(id)
+        all_comments = await bz.bug_comments(id, new_since=new_since)
 
         if include_private_comments:
             mcp_log.info(
