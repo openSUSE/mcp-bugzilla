@@ -43,6 +43,57 @@ The server provides the following tools for interacting with Bugzilla:
   - **Returns**: A dictionary containing the ID of the newly created comment
   - **Example**: `add_comment(12345, "Fixed in version 2.0", is_private=False)`
 
+#### Write Operations
+
+**Note**: Write operations require appropriate Bugzilla permissions. These tools enable bug management and workflow automation.
+
+* **`update_bug_status(bug_id: int, status: str, resolution: str = None, comment: str = "")`**: Updates the status of a bug with optional comment.
+
+  + **Parameters**:
+    - `bug_id`: The bug ID to update
+    - `status`: New status (e.g., `NEW`, `ASSIGNED`, `MODIFIED`, `ON_QA`, `VERIFIED`, `CLOSED`)
+    - `resolution`: Required when status is `CLOSED` (e.g., `FIXED`, `WONTFIX`, `NOTABUG`, `DUPLICATE`)
+    - `comment`: Optional comment explaining the status change
+  + **Returns**: A dictionary containing the updated bug fields
+  + **Example**: `update_bug_status(12345, "CLOSED", resolution="FIXED", comment="Fixed in version 2.0")`
+
+* **`assign_bug(bug_id: int, assignee: str, comment: str = "")`**: Assigns a bug to a user.
+
+  + **Parameters**:
+    - `bug_id`: The bug ID to assign
+    - `assignee`: Email address of the assignee
+    - `comment`: Optional comment explaining the assignment
+  + **Returns**: A dictionary containing the updated bug fields
+  + **Example**: `assign_bug(12345, "developer@example.com", comment="You're the expert on this component")`
+
+* **`update_bug_fields(bug_id: int, priority: str = None, severity: str = None, resolution: str = None, comment: str = "")`**: Updates various bug fields.
+
+  + **Parameters**:
+    - `bug_id`: The bug ID to update
+    - `priority`: Priority level (e.g., `urgent`, `high`, `medium`, `low`, `unspecified`)
+    - `severity`: Severity level (e.g., `urgent`, `high`, `medium`, `low`, `unspecified`)
+    - `resolution`: Resolution (only for closed bugs)
+    - `comment`: Optional comment explaining the changes
+  + **Returns**: A dictionary containing the updated bug fields
+  + **Example**: `update_bug_fields(12345, priority="high", severity="urgent", comment="Escalating due to customer impact")`
+
+* **`add_cc_to_bug(bug_id: int, cc_email: str)`**: Adds an email address to the CC list of a bug.
+
+  + **Parameters**:
+    - `bug_id`: The bug ID
+    - `cc_email`: Email address to add to CC list
+  + **Returns**: A dictionary containing the updated bug fields
+  + **Example**: `add_cc_to_bug(12345, "manager@example.com")`
+
+* **`mark_as_duplicate(bug_id: int, duplicate_of: int, comment: str = "")`**: Marks a bug as a duplicate of another bug and closes it.
+
+  + **Parameters**:
+    - `bug_id`: The bug ID to mark as duplicate
+    - `duplicate_of`: The bug ID this is a duplicate of
+    - `comment`: Optional comment (auto-generated if not provided)
+  + **Returns**: A dictionary containing the updated bug fields including status `CLOSED`, resolution `DUPLICATE`, and `dupe_of` reference
+  + **Example**: `mark_as_duplicate(12345, 789012, comment="Same root cause as the original report")`
+
 #### Bug Search
 
 - **`bugs_quicksearch(query: str, status: str = "ALL", include_fields: str = "...", limit: int = 50, offset: int = 0)`**: Executes a search for bugs using Bugzilla's powerful [quicksearch syntax](https://bugzilla.readthedocs.io/en/latest/using/finding.html#quicksearch).
@@ -383,6 +434,38 @@ curl -X POST http://127.0.0.1:8000/mcp/ \
   -H "ApiKey: YOUR_API_KEY_HERE" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "server_url"}, "id": 1}'
+```
+
+### Example 7: Update Bug Status
+```python
+# Close a bug as fixed
+result = client.call_tool("update_bug_status", {
+    "bug_id": 12345,
+    "status": "CLOSED",
+    "resolution": "FIXED",
+    "comment": "Fixed in commit abc123"
+})
+```
+
+### Example 8: Assign a Bug
+```python
+# Assign bug to a developer
+result = client.call_tool("assign_bug", {
+    "bug_id": 12345,
+    "assignee": "developer@example.com",
+    "comment": "Please review this regression"
+})
+```
+
+### Example 9: Mark as Duplicate
+```python
+# Mark bug as duplicate and close it
+result = client.call_tool("mark_as_duplicate", {
+    "bug_id": 12345,
+    "duplicate_of": 67890,
+    "comment": "This is a duplicate of the original report"
+})
+# Bug is automatically closed with resolution DUPLICATE
 ```
 
 ## Troubleshooting
