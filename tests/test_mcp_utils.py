@@ -42,7 +42,7 @@ async def test_bug_info(bz_client):
 @pytest.mark.asyncio
 async def test_bug_comments(bz_client):
     async with respx.mock(base_url=MOCK_URL) as respx_mock:
-        respx_mock.get("/rest/bug/123/comment").mock(
+        route = respx_mock.get("/rest/bug/123/comment").mock(
             return_value=Response(
                 200,
                 json={
@@ -61,6 +61,12 @@ async def test_bug_comments(bz_client):
         comments = await bz_client.bug_comments(123)
         assert len(comments) == 2
         assert comments[0]["text"] == "Comment 1"
+        assert route.called
+        assert "new_since" not in route.calls.last.request.url.params
+
+        comments_with_since = await bz_client.bug_comments(123, new_since="2000-01-01")
+        assert len(comments_with_since) == 2
+        assert route.calls.last.request.url.params["new_since"] == "2000-01-01"
 
 
 @pytest.mark.asyncio

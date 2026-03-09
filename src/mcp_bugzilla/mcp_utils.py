@@ -109,13 +109,17 @@ class Bugzilla:
         mcp_log.debug(f"[BZ-RES] {data}")
         return data
 
-    async def bug_comments(self, bug_id: int) -> list[dict[str, Any]]:
+    async def bug_comments(self, bug_id: int, new_since: Optional[str] = None) -> list[dict[str, Any]]:
         """Get comments of a bug"""
         url = f"/bug/{bug_id}/comment"
-        mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url}")
+        params = {}
+        if new_since:
+            params["new_since"] = new_since
+            
+        mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} params={params}")
 
         try:
-            r = await self.client.get(url)
+            r = await self.client.get(url, params=params)
             r.raise_for_status()
         except httpx.HTTPStatusError as e:
             mcp_log.error(
