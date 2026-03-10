@@ -106,3 +106,286 @@ async def test_quicksearch(bz_client):
         assert params["offset"] == "0"
         assert "include_fields" in params
         assert params["include_fields"] == "id,product"
+
+@pytest.mark.asyncio
+async def test_update_bug_single_field(bz_client):
+    """Test updating a single field"""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.put("/rest/bug/123").mock(
+            return_value=Response(
+                200,
+                json={
+                    "bugs": [{
+                        "id": 123,
+                        "changes": {
+                            "priority": {"removed": "low", "added": "high"}
+                        },
+                        "last_change_time": "2026-03-09T10:00:00Z"
+                    }]
+                }
+            )
+        )
+
+        result = await bz_client.update_bug(
+            bug_id=123,
+            updates={"priority": "high"}
+        )
+
+        assert result["bugs"][0]["id"] == 123
+        assert "priority" in result["bugs"][0]["changes"]
+        assert result["bugs"][0]["changes"]["priority"]["added"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_update_bug_multiple_fields(bz_client):
+    """Test updating multiple fields simultaneously"""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.put("/rest/bug/123").mock(
+            return_value=Response(
+                200,
+                json={
+                    "bugs": [{
+                        "id": 123,
+                        "changes": {
+                            "priority": {"removed": "low", "added": "high"},
+                            "severity": {"removed": "medium", "added": "urgent"},
+                            "status": {"removed": "NEW", "added": "ASSIGNED"}
+                        }
+                    }]
+                }
+            )
+        )
+
+        result = await bz_client.update_bug(
+            bug_id=123,
+            updates={
+                "priority": "high",
+                "severity": "urgent",
+                "status": "ASSIGNED"
+            }
+        )
+
+        changes = result["bugs"][0]["changes"]
+        assert len(changes) == 3
+        assert changes["priority"]["added"] == "high"
+        assert changes["severity"]["added"] == "urgent"
+        assert changes["status"]["added"] == "ASSIGNED"
+
+
+@pytest.mark.asyncio
+async def test_update_bug_with_comment(bz_client):
+    """Test bug update with optional comment"""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.put("/rest/bug/123").mock(
+            return_value=Response(
+                200,
+                json={
+                    "bugs": [{
+                        "id": 123,
+                        "changes": {
+                            "status": {"removed": "NEW", "added": "CLOSED"},
+                            "resolution": {"removed": "", "added": "FIXED"}
+                        }
+                    }]
+                }
+            )
+        )
+
+        result = await bz_client.update_bug(
+            bug_id=123,
+            updates={"status": "CLOSED", "resolution": "FIXED"},
+            comment="Fixed in commit abc123"
+        )
+
+        assert result["bugs"][0]["id"] == 123
+        # Verify comment was included in request
+        assert route.called
+        request_body = route.calls.last.request.content
+        assert b"Fixed in commit abc123" in request_body
+
+
+@pytest.mark.asyncio
+async def test_update_bug_close_with_resolution(bz_client):
+    """Test closing a bug with required resolution"""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.put("/rest/bug/123").mock(
+            return_value=Response(
+                200,
+                json={
+                    "bugs": [{
+                        "id": 123,
+                        "changes": {
+                            "status": {"removed": "ASSIGNED", "added": "CLOSED"},
+                            "resolution": {"removed": "", "added": "FIXED"}
+                        }
+                    }]
+                }
+            )
+        )
+
+        result = await bz_client.update_bug(
+            bug_id=123,
+            updates={"status": "CLOSED", "resolution": "FIXED"}
+        )
+
+        changes = result["bugs"][0]["changes"]
+        assert changes["status"]["added"] == "CLOSED"
+        assert changes["resolution"]["added"] == "FIXED"
+
+
+@pytest.mark.asyncio
+async def test_update_bug_duplicate_fields(bz_client):
+    """Test marking bug as duplicate"""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.put("/rest/bug/123").mock(
+            return_value=Response(
+                200,
+                json={
+                    "bugs": [{
+                        "id": 123,
+                        "changes": {
+                            "status": {"removed": "NEW", "added": "CLOSED"},
+                            "resolution": {"removed": "", "added": "DUPLICATE"},
+                            "dupe_of": {"removed": "", "added": "456"}
+                        }
+                    }]
+                }
+            )
+        )
+
+        result = await bz_client.update_bug(
+            bug_id=123,
+            updates={
+                "status": "CLOSED",
+                "resolution": "DUPLICATE",
+                "dupe_of": 456
+            }
+        )
+
+        changes = result["bugs"][0]["changes"]
+        assert changes["resolution"]["added"] == "DUPLICATE"
+        assert changes["dupe_of"]["added"] == "456"
+
+
+@pytest.mark.asyncio
+async def test_update_bug_not_found(bz_client):
+    """Test error handling for non-existent bug"""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.put("/rest/bug/999999").mock(
+            return_value=Response(
+                404,
+                json={
+                    "error": True,
+                    "message": "Bug #999999 does not exist.",
+                    "code": 101
+                }
+            )
+        )
+
+        with pytest.raises(Exception) as exc_info:
+            await bz_client.update_bug(
+                bug_id=999999,
+                updates={"priority": "high"}
+            )
+
+        assert "404" in str(exc_info.value) or "does not exist" in str(exc_info.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_update_bug_permission_denied(bz_client):
+    """Test error handling for insufficient permissions"""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.put("/rest/bug/123").mock(
+            return_value=Response(
+                401,
+                json={
+                    "error": True,
+                    "message": "You are not authorized to edit this bug",
+                    "code": 102
+                }
+            )
+        )
+
+        with pytest.raises(Exception) as exc_info:
+            await bz_client.update_bug(
+                bug_id=123,
+                updates={"assigned_to": "other@example.com"}
+            )
+
+        assert "401" in str(exc_info.value) or "not authorized" in str(exc_info.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_update_bug_validation_error(bz_client):
+    """Test validation error for invalid field combinations"""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.put("/rest/bug/123").mock(
+            return_value=Response(
+                400,
+                json={
+                    "error": True,
+                    "message": "You must provide a resolution when status is CLOSED",
+                    "code": 121
+                }
+            )
+        )
+
+        with pytest.raises(Exception) as exc_info:
+            await bz_client.update_bug(
+                bug_id=123,
+                updates={"status": "CLOSED"}  # Missing required resolution
+            )
+
+        assert "400" in str(exc_info.value) or "resolution" in str(exc_info.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_update_bug_empty_updates(bz_client):
+    """Test behavior with empty updates dictionary"""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.put("/rest/bug/123").mock(
+            return_value=Response(
+                200,
+                json={
+                    "bugs": [{
+                        "id": 123,
+                        "changes": {}
+                    }]
+                }
+            )
+        )
+
+        result = await bz_client.update_bug(
+            bug_id=123,
+            updates={}
+        )
+
+        assert result["bugs"][0]["changes"] == {}
+
+
+@pytest.mark.asyncio
+async def test_update_bug_comment_only(bz_client):
+    """Test adding comment without field updates"""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.put("/rest/bug/123").mock(
+            return_value=Response(
+                200,
+                json={
+                    "bugs": [{
+                        "id": 123,
+                        "changes": {}
+                    }]
+                }
+            )
+        )
+
+        result = await bz_client.update_bug(
+            bug_id=123,
+            updates={},
+            comment="Just adding a comment"
+        )
+
+        assert result["bugs"][0]["id"] == 123
+        assert route.called
+        request_body = route.calls.last.request.content
+        assert b"Just adding a comment" in request_body
