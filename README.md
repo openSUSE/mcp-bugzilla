@@ -28,13 +28,13 @@ The server provides the following tools for interacting with Bugzilla:
   - **Returns**: A dictionary containing all available information about the bug (status, assignee, summary, description, attachments, etc.)
   - **Example**: `bug_info(12345)` returns complete bug details
 
-- **`bug_comments(id: int, include_private_comments: bool = False, new_since: Optional[str] = None)`**: Fetches all comments associated with a given bug ID.
+- **`bug_comments(id: int, include_private_comments: bool = False, new_since: Optional[datetime] = None)`**: Fetches all comments associated with a given bug ID.
   - **Parameters**:
     - `id`: The bug ID to fetch comments for
     - `include_private_comments`: Whether to include private comments (default: `False`)
-    - `new_since`: Optional date string to only return comments newer than this time
+    - `new_since`: Optional datetime object to only return comments newer than this time.
   - **Returns**: A list of comment dictionaries, each containing author, timestamp, text, and privacy status
-  - **Example**: `bug_comments(12345, include_private_comments=True, new_since="2024-01-01")` returns all comments newer than Jan 1, 2024 including private ones
+  - **Example**: `bug_comments(12345, include_private_comments=True, new_since=datetime.fromisoformat("2024-01-01T00:00:00"))` returns all comments newer than Jan 1, 2024 including private ones
 
 - **`add_comment(bug_id: int, comment: str, is_private: bool = False)`**: Adds a new comment to a specified bug.
   - **Parameters**:
