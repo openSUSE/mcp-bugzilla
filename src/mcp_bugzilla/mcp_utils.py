@@ -9,6 +9,7 @@ License: Apache 2.0
 import logging
 import os
 from typing import Any, Optional
+from datetime import datetime
 from httpx_retries import RetryTransport
 import httpx
 
@@ -109,12 +110,12 @@ class Bugzilla:
         mcp_log.debug(f"[BZ-RES] {data}")
         return data
 
-    async def bug_comments(self, bug_id: int, new_since: Optional[str] = None) -> list[dict[str, Any]]:
+    async def bug_comments(self, bug_id: int, new_since: Optional[datetime] = None) -> list[dict[str, Any]]:
         """Get comments of a bug"""
         url = f"/bug/{bug_id}/comment"
         params = {}
         if new_since:
-            params["new_since"] = new_since
+            params["new_since"] = new_since.strftime("%Y-%m-%dT%H:%M:%SZ")
             
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} params={params}")
 

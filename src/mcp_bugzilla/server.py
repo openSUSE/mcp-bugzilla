@@ -8,6 +8,7 @@ License: Apache 2.0
 
 import importlib.metadata
 from typing import Any, List
+from datetime import datetime
 
 from contextlib import asynccontextmanager
 
@@ -70,7 +71,7 @@ async def bug_info(id: int, bz: Bugzilla = Depends(get_bz)) -> dict[str, Any]:
 
 @mcp.tool()
 async def bug_comments(
-    id: int, include_private_comments: bool = False, new_since: Optional[str] = None, bz: Bugzilla = Depends(get_bz)
+    id: int, include_private_comments: bool = False, new_since: Optional[datetime] = None, bz: Bugzilla = Depends(get_bz)
 ) -> List[dict[str, Any]]:
     """Returns the comments of given bug id
     Private comments are not included by default
