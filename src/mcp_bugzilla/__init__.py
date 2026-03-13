@@ -40,9 +40,14 @@ def main():
     parser.add_argument(
         "--use-auth-header",
         action="store_true",
-        help="Use Authorization: Bearer header instead of api_key query parameter (required for some Bugzilla instances)"
+        help="Use Authorization: Bearer header instead of api_key query parameter (required for some Bugzilla instances)",
     )
 
+    parser.add_argument(
+        "--read-only",
+        action="store_true",
+        help="Disables all methods which modify the state of the bug",
+    )
     args = parser.parse_args()
 
     # The default behavior of argparse with os.getenv already handles the priority:
@@ -59,6 +64,7 @@ def main():
     server.cli_args["port"] = args.port
     server.cli_args["api_key_header"] = args.api_key_header
     server.cli_args["use_auth_header"] = args.use_auth_header
+    server.cli_args["read_only"] = args.read_only
 
     server.start()
 

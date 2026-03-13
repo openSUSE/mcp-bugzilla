@@ -7,16 +7,14 @@ License: Apache 2.0
 """
 
 import importlib.metadata
-from typing import Any, List
-from datetime import datetime
-
 from contextlib import asynccontextmanager
+from datetime import datetime
+from typing import Any, List, Optional
 
 import httpx
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
 from fastmcp.exceptions import PromptError, ResourceError, ToolError, ValidationError
-from typing import Optional
 
 from .mcp_utils import Bugzilla, mcp_log
 
@@ -45,14 +43,12 @@ async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
     bz = Bugzilla(
         url=base_url,
         api_key=api_key_value,
-        use_auth_header=cli_args.get("use_auth_header", False)
+        use_auth_header=cli_args.get("use_auth_header", False),
     )
     try:
         yield bz
     finally:
         await bz.close()
-
-
 
 
 @mcp.tool()
@@ -71,7 +67,10 @@ async def bug_info(id: int, bz: Bugzilla = Depends(get_bz)) -> dict[str, Any]:
 
 @mcp.tool()
 async def bug_comments(
-    id: int, include_private_comments: bool = False, new_since: Optional[datetime] = None, bz: Bugzilla = Depends(get_bz)
+    id: int,
+    include_private_comments: bool = False,
+    new_since: Optional[datetime] = None,
+    bz: Bugzilla = Depends(get_bz),
 ) -> List[dict[str, Any]]:
     """Returns the comments of given bug id
     Private comments are not included by default
@@ -100,7 +99,7 @@ async def bug_comments(
         raise ToolError(f"Failed to fetch bug comments\nReason: {e}")
 
 
-@mcp.tool()
+@mcp.tool(tags={"write"})
 async def add_comment(
     bug_id: int, comment: str, is_private: bool = False, bz: Bugzilla = Depends(get_bz)
 ) -> dict[str, int]:
@@ -127,7 +126,7 @@ async def bugs_quicksearch(
     bz: Bugzilla = Depends(get_bz),
 ) -> List[Any]:
     """Search bugs using bugzilla's quicksearch syntax
-    
+
     To reduce the token limit & response time, only returns a subset of fields for each bug
     The user can query full details of each bug using the bug_info tool
     """
@@ -218,7 +217,7 @@ async def summarize_bug_prompt(id: int, bz: Bugzilla = Depends(get_bz)) -> str:
     - Mention usernames & dates wherever relevant.
     - date field must be in human readable format
     - Usernames must be bold italic (***username***) dates must be bold (**date**)
-    
+
     Comments Data:
     {comments}
     """.strip()
@@ -230,13 +229,13 @@ async def summarize_bug_prompt(id: int, bz: Bugzilla = Depends(get_bz)) -> str:
         raise PromptError(f"Summarize Comments Failed\nReason: {e}")
 
 
-@mcp.tool()
+@mcp.tool(tags={"write"})
 async def update_bug_status(
     bug_id: int,
     status: str,
     resolution: Optional[str] = None,
     comment: str = "",
-    bz: Bugzilla = Depends(get_bz)
+    bz: Bugzilla = Depends(get_bz),
 ) -> dict[str, Any]:
     """Update the status of a bug. Optionally add a comment explaining the status change.
 
@@ -259,7 +258,9 @@ async def update_bug_status(
 
     # Validate: CLOSED requires resolution
     if status == "CLOSED" and not resolution:
-        raise ToolError("Resolution is required when setting status to CLOSED (e.g., FIXED, WONTFIX, NOTABUG, DUPLICATE)")
+        raise ToolError(
+            "Resolution is required when setting status to CLOSED (e.g., FIXED, WONTFIX, NOTABUG, DUPLICATE)"
+        )
 
     try:
         result = await bz.update_bug(bug_id, updates, comment)
@@ -268,12 +269,9 @@ async def update_bug_status(
         raise ToolError(f"Failed to update bug status\n{e}")
 
 
-@mcp.tool()
+@mcp.tool(tags={"write"})
 async def assign_bug(
-    bug_id: int,
-    assignee: str,
-    comment: str = "",
-    bz: Bugzilla = Depends(get_bz)
+    bug_id: int, assignee: str, comment: str = "", bz: Bugzilla = Depends(get_bz)
 ) -> dict[str, Any]:
     """Assign a bug to a user. Optionally add a comment.
 
@@ -282,9 +280,7 @@ async def assign_bug(
         assignee: Email address of the assignee
         comment: Optional comment explaining the assignment
     """
-    mcp_log.info(
-        f"[LLM-REQ] assign_bug(bug_id={bug_id}, assignee='{assignee}')"
-    )
+    mcp_log.info(f"[LLM-REQ] assign_bug(bug_id={bug_id}, assignee='{assignee}')")
     try:
         result = await bz.update_bug(bug_id, {"assigned_to": assignee}, comment)
         return result
@@ -292,14 +288,14 @@ async def assign_bug(
         raise ToolError(f"Failed to assign bug\n{e}")
 
 
-@mcp.tool()
+@mcp.tool(tags={"write"})
 async def update_bug_fields(
     bug_id: int,
     priority: Optional[str] = None,
     severity: Optional[str] = None,
     resolution: Optional[str] = None,
     comment: str = "",
-    bz: Bugzilla = Depends(get_bz)
+    bz: Bugzilla = Depends(get_bz),
 ) -> dict[str, Any]:
     """Update various bug fields. All fields are optional.
 
@@ -332,11 +328,9 @@ async def update_bug_fields(
         raise ToolError(f"Failed to update bug fields\n{e}")
 
 
-@mcp.tool()
+@mcp.tool(tags={"write"})
 async def add_cc_to_bug(
-    bug_id: int,
-    cc_email: str,
-    bz: Bugzilla = Depends(get_bz)
+    bug_id: int, cc_email: str, bz: Bugzilla = Depends(get_bz)
 ) -> dict[str, Any]:
     """Add an email address to the CC list of a bug.
 
@@ -344,9 +338,7 @@ async def add_cc_to_bug(
         bug_id: Bug ID
         cc_email: Email address to add to CC list
     """
-    mcp_log.info(
-        f"[LLM-REQ] add_cc_to_bug(bug_id={bug_id}, cc_email='{cc_email}')"
-    )
+    mcp_log.info(f"[LLM-REQ] add_cc_to_bug(bug_id={bug_id}, cc_email='{cc_email}')")
     try:
         result = await bz.update_bug(bug_id, {"cc": {"add": [cc_email]}}, "")
         return result
@@ -354,12 +346,9 @@ async def add_cc_to_bug(
         raise ToolError(f"Failed to add CC\n{e}")
 
 
-@mcp.tool()
+@mcp.tool(tags={"write"})
 async def mark_as_duplicate(
-    bug_id: int,
-    duplicate_of: int,
-    comment: str = "",
-    bz: Bugzilla = Depends(get_bz)
+    bug_id: int, duplicate_of: int, comment: str = "", bz: Bugzilla = Depends(get_bz)
 ) -> dict[str, Any]:
     """Mark a bug as a duplicate of another bug and close it.
 
@@ -375,11 +364,7 @@ async def mark_as_duplicate(
     if not comment:
         comment = f"Marking as duplicate of bug {duplicate_of}"
 
-    updates = {
-        "status": "CLOSED",
-        "resolution": "DUPLICATE",
-        "dupe_of": duplicate_of
-    }
+    updates = {"status": "CLOSED", "resolution": "DUPLICATE", "dupe_of": duplicate_of}
 
     try:
         result = await bz.update_bug(bug_id, updates, comment)
@@ -412,6 +397,16 @@ def disable_components_selectively():
             mcp.disable(keys={key})
 
 
+def disable_write_components():
+    """
+    Disable all components which alter the state of bug
+    """
+    if cli_args.get("read_only"):
+        mcp_log.info("Disabling components which can modify bugs")
+        # disable all methods with write tags
+        mcp.disable(tags={"write"})
+
+
 def start():
     """
     Starts the FastMCP server for Bugzilla.
@@ -424,7 +419,10 @@ def start():
 
     # Seletively disable components before running the server
     disable_components_selectively()
+    disable_write_components()
 
-    mcp_log.info(f"Starting Bugzilla MCP server on {cli_args['host']}:{cli_args['port']}")
+    mcp_log.info(
+        f"Starting Bugzilla MCP server on {cli_args['host']}:{cli_args['port']}"
+    )
 
     mcp.run(transport="http", host=cli_args["host"], port=cli_args["port"])
