@@ -186,6 +186,7 @@ The `mcp-bugzilla` command supports the following options:
 | `--port <PORT>` | `MCP_PORT` | `8000` | Port for the MCP server to listen on |
 | `--api-key-header <HEADER_NAME>` | `MCP_API_KEY_HEADER` | `ApiKey` | HTTP header name for the Bugzilla API key |
 | `--use-auth-header` | `USE_AUTH_HEADER` | `False` | Use `Authorization: Bearer` header instead of `api_key` query parameter |
+| `--read-only` | N/A | False | Disables all tools which can modify a bug
 
 **Note**: Command-line arguments take precedence over environment variables.
 
