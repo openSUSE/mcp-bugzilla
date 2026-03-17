@@ -4,8 +4,6 @@ import argparse
 import os
 import sys
 
-from pydantic_core import ArgsKwargs
-
 from . import server
 from .mcp_utils import mcp_log
 
