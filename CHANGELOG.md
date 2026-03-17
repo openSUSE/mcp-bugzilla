@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
+## [v0.11.0]- 2026-03-18
+
+### Added
+- `mcp_server_info_resource` now also returns bugzilla server's version
+- Add `new_since` parameter to `bug_comments` to filter results by date.
+- Add comprehensive write operations to Bugzilla MCP. This fills a significant gap in the original implementation, which only supported `add_comment` for write operations. These additions enable full bug lifecycle management through the MCP interface. New tools added include:
+  - `update_bug_status`: Change bug status with proper validation (requires resolution when closing bugs)
+  - `assign_bug`: Assign bugs to users with optional comment
+  - `update_bug_fields`: Modify priority, severity, and resolution
+  - `add_cc_to_bug`: Add email addresses to CC list
+  - `mark_as_duplicate`: Properly close bugs as duplicates with both status, resolution, and dupe_of fields
+- Add `--read-only` CLI flag to disable tools which can modify status of a bug
+
+### Fixed
+- Add missing CLI flag `--use-auth-header`
+
+### Chore
+- Bump fastmcp from 3.1.0 to 3.1.1
+- Bump uv from 0.10.9 to 0.10.11
+- Bump authlib from 1.6.7 to 1.6.9
+- Bump pyjwt from 2.11.0 to 2.12.0
+- Bump uv from 0.10.7 to 0.10.9
+- Bump authlib from 1.6.6 to 1.6.7
+- Added tests for new methods
+
 ## [v0.10.0] - 2026-03-03
 
 ### Added
@@ -43,5 +68,5 @@ Several New Improvements by [@SanthoshSiddegowda](https://github.com/SanthoshSid
   *   **Unit Tests**: Added a new test suite in `tests/test_mcp_utils.py` covering core functionalities (`bug_info`, `bug_comments`, `add_comment`, `quicksearch`).
   *   **Mocking**: Utilized `respx` to mock external Bugzilla API calls, ensuring tests are fast and deterministic without requiring a live server.
   *   **CI/CD**: Added a GitHub Actions workflow (`.github/workflows/tests.yml`) to automatically run tests on every push and pull request.
-  *   **Status Badge**: Added a "Tests" workflow status badge to the `README.md`.
+  *   **Status Badge**: Added a \"Tests\" workflow status badge to the `README.md`.
   *   **Dependencies**: Updated `pyproject.toml` to include `pytest`, `pytest-asyncio`, and `respx` as development dependencies.
