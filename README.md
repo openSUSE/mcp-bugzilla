@@ -186,7 +186,7 @@ The `mcp-bugzilla` command supports the following options:
 | `--port <PORT>` | `MCP_PORT` | `8000` | Port for the MCP server to listen on |
 | `--api-key-header <HEADER_NAME>` | `MCP_API_KEY_HEADER` | `ApiKey` | HTTP header name for the Bugzilla API key |
 | `--use-auth-header` | `USE_AUTH_HEADER` | `False` | Use `Authorization: Bearer` header instead of `api_key` query parameter |
-| `--read-only` | N/A | False | Disables all tools which can modify a bug
+| `--read-only` | N/A | False | Disables all tools which can modify a bug. Works well in conjunction with `MCP_BUGZILLA_DISABLED_METHODS`
 
 **Note**: Command-line arguments take precedence over environment variables.
 
@@ -200,8 +200,8 @@ export MCP_HOST=127.0.0.1
 export MCP_PORT=8000
 export MCP_API_KEY_HEADER=ApiKey
 export LOG_LEVEL=INFO  # Optional: DEBUG, INFO, WARNING, ERROR, CRITICAL
-
 # Selective Disabling Tools (Optional)
+# Works fine in conjunction with --read-only flag
 export MCP_BUGZILLA_DISABLED_METHODS='bug_info,bug_comments'
 
 mcp-bugzilla

@@ -7,11 +7,11 @@ License: Apache 2.0
 """
 
 import importlib.metadata
+from argparse import Namespace
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, List, Optional
 
-import httpx
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
 from fastmcp.exceptions import PromptError, ResourceError, ToolError, ValidationError
@@ -22,7 +22,7 @@ from .mcp_utils import Bugzilla, mcp_log
 mcp = FastMCP("Bugzilla")
 
 # Global dict to hold command-line arguments, populated by main() in __init__.py
-cli_args: dict[str, Any] = {}
+cli_args: Namespace
 
 # Global variable to hold the base_url, set by the start() function
 base_url: str = ""
@@ -33,7 +33,7 @@ async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
     """Dependency to get the current Bugzilla client"""
     mcp_log.debug("api_key: Checking")
 
-    api_key_header = cli_args.get("api_key_header", "ApiKey")
+    api_key_header = getattr(cli_args, "api_key_header", "ApiKey")
     api_key_value = headers.get(api_key_header.lower())
 
     if not api_key_value:
@@ -43,7 +43,7 @@ async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
     bz = Bugzilla(
         url=base_url,
         api_key=api_key_value,
-        use_auth_header=cli_args.get("use_auth_header", False),
+        use_auth_header=getattr(cli_args, "use_auth_header", False),
     )
     try:
         yield bz
@@ -189,7 +189,7 @@ def bug_url(bug_id: int) -> str:
 def mcp_server_info_resource() -> dict[str, Any]:
     """Returns the args being used by the current server instance"""
     mcp_log.info("[LLM-REQ] mcp_server_info_resource()")
-    info = cli_args.copy()
+    info = vars(cli_args).copy()
     info["version"] = importlib.metadata.version("mcp-bugzilla")
     return info
 
@@ -400,9 +400,10 @@ def disable_components_selectively():
 def disable_write_components():
     """
     Disable all components which alter the state of bug
+    Invoked when --read-only flag is set
     """
-    if cli_args.get("read_only"):
-        mcp_log.info("Disabling components which can modify bugs")
+    if getattr(cli_args, "read_only", False):
+        mcp_log.info("Disabling all components which can modify bugs")
         # disable all methods with write tags
         mcp.disable(tags={"write"})
 
@@ -412,7 +413,7 @@ def start():
     Starts the FastMCP server for Bugzilla.
     """
     global base_url
-    base_url = cli_args["bugzilla_server"]
+    base_url = cli_args.bugzilla_server
     # Ensure base_url doesn't have trailing slash for consistency
     if base_url.endswith("/"):
         base_url = base_url[:-1]
@@ -421,8 +422,6 @@ def start():
     disable_components_selectively()
     disable_write_components()
 
-    mcp_log.info(
-        f"Starting Bugzilla MCP server on {cli_args['host']}:{cli_args['port']}"
-    )
+    mcp_log.info(f"Starting Bugzilla MCP server on {cli_args.host}:{cli_args.port}")
 
-    mcp.run(transport="http", host=cli_args["host"], port=cli_args["port"])
+    mcp.run(transport="http", host=cli_args.host, port=cli_args.port)

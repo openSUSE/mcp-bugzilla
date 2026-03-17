@@ -4,6 +4,8 @@ import argparse
 import os
 import sys
 
+from pydantic_core import ArgsKwargs
+
 from . import server
 from .mcp_utils import mcp_log
 
@@ -59,13 +61,7 @@ def main():
         )
         sys.exit(1)
 
-    server.cli_args["bugzilla_server"] = args.bugzilla_server
-    server.cli_args["host"] = args.host
-    server.cli_args["port"] = args.port
-    server.cli_args["api_key_header"] = args.api_key_header
-    server.cli_args["use_auth_header"] = args.use_auth_header
-    server.cli_args["read_only"] = args.read_only
-
+    server.cli_args = args
     server.start()
 
 
