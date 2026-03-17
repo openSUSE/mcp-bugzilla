@@ -186,11 +186,21 @@ def bug_url(bug_id: int) -> str:
 
 
 @mcp.tool()
-def mcp_server_info_resource() -> dict[str, Any]:
+async def mcp_server_info_resource(bz: Bugzilla = Depends(get_bz)) -> dict[str, Any]:
     """Returns the args being used by the current server instance"""
+
     mcp_log.info("[LLM-REQ] mcp_server_info_resource()")
+
     info = vars(cli_args).copy()
-    info["version"] = importlib.metadata.version("mcp-bugzilla")
+
+    info["mcp_version"] = importlib.metadata.version("mcp-bugzilla")
+
+    try:
+        r = await bz.server_version()
+        info["bugzilla_server_version"] = r
+    except Exception as e:
+        mcp_log.info(f"[LLM-RES]: {e}")
+
     return info
 
 

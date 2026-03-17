@@ -8,10 +8,11 @@ License: Apache 2.0
 
 import logging
 import os
-from typing import Any, Optional
 from datetime import datetime
-from httpx_retries import RetryTransport
+from typing import Any, Optional
+
 import httpx
+from httpx_retries import RetryTransport
 
 
 # Logging configuration
@@ -55,7 +56,6 @@ mcp_log.addHandler(handler)
 mcp_log.propagate = False
 
 
-
 class Bugzilla:
     """Async Bugzilla API client"""
 
@@ -63,8 +63,8 @@ class Bugzilla:
         self.base_url = url.rstrip("/")
         self.api_url = f"{self.base_url}/rest"
         self.api_key = api_key
-        params={}
-        headers={"Content-Type": "application/json", "Accept": "application/json"}
+        params = {}
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
         if use_auth_header:
             headers["Authorization"] = f"Bearer {self.api_key}"
         else:
@@ -85,6 +85,23 @@ class Bugzilla:
     def params(self) -> dict[str, Any]:
         """Return params (mainly for read access if needed externally)"""
         return {"api_key": self.api_key}
+
+    async def server_version(self) -> str:
+        """Fetch bugzilla server version"""
+        try:
+            r = await self.client.get("/version")
+            r.raise_for_status()
+            return r.json()["version"]
+
+        except httpx.HTTPStatusError as e:
+            mcp_log.error(
+                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
+            )
+            raise
+
+        except httpx.RequestError as e:
+            mcp_log.error(f"[BZ-RES] Network Error: {e}")
+            raise
 
     async def bug_info(self, bug_id: int) -> dict[str, Any]:
         """Get information about a given bug"""
@@ -110,13 +127,15 @@ class Bugzilla:
         mcp_log.debug(f"[BZ-RES] {data}")
         return data
 
-    async def bug_comments(self, bug_id: int, new_since: Optional[datetime] = None) -> list[dict[str, Any]]:
+    async def bug_comments(
+        self, bug_id: int, new_since: Optional[datetime] = None
+    ) -> list[dict[str, Any]]:
         """Get comments of a bug"""
         url = f"/bug/{bug_id}/comment"
         params = {}
         if new_since:
             params["new_since"] = new_since.strftime("%Y-%m-%dT%H:%M:%SZ")
-            
+
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} params={params}")
 
         try:
@@ -194,7 +213,9 @@ class Bugzilla:
         mcp_log.info(f"[BZ-RES] Found {len(bugs)} bugs")
         return bugs
 
-    async def update_bug(self, bug_id: int, updates: dict[str, Any], comment: str = "") -> dict[str, Any]:
+    async def update_bug(
+        self, bug_id: int, updates: dict[str, Any], comment: str = ""
+    ) -> dict[str, Any]:
         """Update bug fields. Optionally add a comment with the update."""
         payload = updates.copy()
         if comment:
