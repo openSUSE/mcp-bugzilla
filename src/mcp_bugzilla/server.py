@@ -56,7 +56,7 @@ async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
 
 @mcp.tool()
 async def bug_info(
-    bug_ids: list[int],
+    bug_ids: set[int],
     bz: Bugzilla = Depends(get_bz)
 ) -> dict[str, Any]:
     """Returns the entire information for one or more bugzilla bug ids."""
