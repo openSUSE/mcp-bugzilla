@@ -27,6 +27,9 @@ cli_args: Namespace
 # Global variable to hold the base_url, set by the start() function
 base_url: str = ""
 
+# Global variable for read-only mode
+read_only: bool = False
+
 
 @asynccontextmanager
 async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
@@ -438,7 +441,7 @@ def disable_write_components():
     Disable all components which alter the state of bug
     Invoked when --read-only flag is set
     """
-    if getattr(cli_args, "read_only", False):
+    if read_only:
         mcp_log.info("Disabling all components which can modify bugs")
         # disable all methods with write tags
         mcp.disable(tags={"write"})
@@ -448,8 +451,9 @@ def start():
     """
     Starts the FastMCP server for Bugzilla.
     """
-    global base_url
+    global base_url, read_only
     base_url = cli_args.bugzilla_server
+    read_only = getattr(cli_args, "read_only", False)
     # Ensure base_url doesn't have trailing slash for consistency
     if base_url.endswith("/"):
         base_url = base_url[:-1]
