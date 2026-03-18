@@ -17,6 +17,33 @@ async def bz_client():
 
 
 @pytest.mark.asyncio
+async def test_bugzilla_info(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/version").mock(
+            return_value=Response(200, json={"version": "5.0.4"})
+        )
+        respx_mock.get("/rest/extensions").mock(
+            return_value=Response(200, json={"extensions": {"MockExtension": {}}})
+        )
+        respx_mock.get("/rest/time").mock(
+            return_value=Response(
+                200, json={"tz_name": "UTC", "web_time": "2026-03-18T10:00:00Z"}
+            )
+        )
+        respx_mock.get("/rest/parameters").mock(
+            return_value=Response(200, json={"parameters": {"urlbase": "http://mock"}})
+        )
+
+        info = await bz_client.bugzilla_info()
+        assert info["url"] == MOCK_URL.rstrip("/rest")
+        assert info["version"] == "5.0.4"
+        assert "MockExtension" in info["extensions"]
+        assert info["timezone"] == "UTC"
+        assert info["time"] == "2026-03-18T10:00:00Z"
+        assert info["parameters"]["urlbase"] == "http://mock"
+
+
+@pytest.mark.asyncio
 async def test_bug_info(bz_client):
     async with respx.mock(base_url=MOCK_URL) as respx_mock:
         # Note: Bugzilla client appends /rest to the base url passed in constructor

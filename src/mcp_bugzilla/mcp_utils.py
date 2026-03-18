@@ -6,6 +6,7 @@ Author: Sai Karthik <kskarthik@disroot.org>
 License: Apache 2.0
 """
 
+import asyncio
 import logging
 import os
 from datetime import datetime
@@ -99,6 +100,49 @@ class Bugzilla:
             )
             raise
 
+        except httpx.RequestError as e:
+            mcp_log.error(f"[BZ-RES] Network Error: {e}")
+            raise
+
+    async def bugzilla_info(self) -> dict[str, Any]:
+        """Fetch comprehensive bugzilla server information:
+        it returns url, version, extensions, timezone, time and parameters for the current user in a dictionary
+        """
+        try:
+            # Fetch everything concurrently
+            version_r, extensions_r, time_r, parameters_r = await asyncio.gather(
+                self.client.get("/version"),
+                self.client.get("/extensions"),
+                self.client.get("/time"),
+                self.client.get("/parameters"),
+            )
+
+            # Raise for status on all
+            for r in [version_r, extensions_r, time_r, parameters_r]:
+                r.raise_for_status()
+
+            # Combine results
+            version_data = version_r.json()
+            extensions_data = extensions_r.json()
+            time_data = time_r.json()
+            parameters_data = parameters_r.json()
+
+            result = {
+                "url": self.base_url,
+                "version": version_data.get("version"),
+                "extensions": extensions_data.get("extensions", {}),
+                "timezone": time_data.get("tz_name"),
+                "time": time_data.get("web_time"),
+                "parameters": parameters_data.get("parameters", {}),
+            }
+            mcp_log.info(f"[BZ-RES] Retrieved bugzilla server info from {self.base_url}")
+            return result
+
+        except httpx.HTTPStatusError as e:
+            mcp_log.error(
+                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
+            )
+            raise
         except httpx.RequestError as e:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
             raise
