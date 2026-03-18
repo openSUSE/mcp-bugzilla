@@ -46,7 +46,8 @@ def main():
     parser.add_argument(
         "--read-only",
         action="store_true",
-        help="Disables all methods which modify the state of the bug",
+        default=os.getenv("MCP_READ_ONLY", "false").lower() == "true",
+        help="Disables all methods which modify the state of the bug. Environment variable MCP_READ_ONLY=true can also be used.",
     )
     args = parser.parse_args()
 
