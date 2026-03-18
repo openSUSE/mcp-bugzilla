@@ -150,8 +150,12 @@ class Bugzilla:
     async def bug_info(self, ids: list[int]) -> dict[str, Any]:
         """Get information about a given bug or list of bugs"""
 
-        url = "/bug"
-        params = {"id": ",".join(str(i) for i in ids)}
+        if len(ids) == 1:
+            url = f"/bug/{ids[0]}"
+            params = {}
+        else:
+            url = "/bug"
+            params = {"id": ",".join(str(i) for i in ids)}
 
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} params={params}")
 

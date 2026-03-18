@@ -464,4 +464,4 @@ def start():
 
     mcp_log.info(f"Starting Bugzilla MCP server on {cli_args.host}:{cli_args.port}")
 
-    mcp.run(transport="http", host=cli_args.host, port=cli_args.port)
+    mcp.run(transport="http", host=cli_args.host, port=cli_args.port, show_banner=False)
