@@ -195,10 +195,13 @@ async def quicksearch_syntax_resource(bz: Bugzilla = Depends(get_bz)) -> str:
 
 
 @mcp.tool()
-def server_url_resource() -> str:
-    """bugzilla server's base url"""
-    mcp_log.info("[LLM-REQ] server_url_resource()")
-    return base_url
+async def bugzilla_server_info(bz: Bugzilla = Depends(get_bz)) -> dict[str, Any]:
+    """Returns comprehensive bugzilla server information (url, version, extensions, timezone, time, parameters)."""
+    mcp_log.info("[LLM-REQ] bugzilla_server_info()")
+    try:
+        return await bz.bugzilla_info()
+    except Exception as e:
+        raise ToolError(f"Failed to fetch bugzilla server info\nReason: {e}")
 
 
 @mcp.tool()
