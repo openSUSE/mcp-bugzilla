@@ -52,17 +52,39 @@ async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
 
 
 @mcp.tool()
-async def bug_info(id: int, bz: Bugzilla = Depends(get_bz)) -> dict[str, Any]:
-    """Returns the entire information about a given bugzilla bug id"""
+async def bug_info(
+    bug_ids: list[int],
+    bz: Bugzilla = Depends(get_bz)
+) -> dict[str, Any]:
+    """Returns the entire information for one or more bugzilla bug ids."""
 
-    mcp_log.info(f"[LLM-REQ] bug_info(id={id})")
+    mcp_log.info(f"[LLM-REQ] bug_info(ids={bug_ids})")
 
     try:
-        result = await bz.bug_info(id)
+        result = await bz.bug_info(bug_ids)
         return result
 
     except Exception as e:
         raise ToolError(f"Failed to fetch bug info\nReason: {e}")
+
+@mcp.tool()
+async def bug_history(
+    id: int,
+    new_since: Optional[datetime] = None,
+    bz: Bugzilla = Depends(get_bz),
+) -> list[dict[str, Any]]:
+    """Returns the history of given bug id.
+    new_since allows filtering history newer than the given date.
+    """
+
+    mcp_log.info(f"[LLM-REQ] bug_history(id={id}, new_since={new_since})")
+
+    try:
+        history = await bz.bug_history(id, new_since=new_since)
+        mcp_log.info(f"[LLM-RES] Returning {len(history)} history items")
+        return history
+    except Exception as e:
+        raise ToolError(f"Failed to fetch bug history\nReason: {e}")
 
 
 @mcp.tool()
@@ -124,11 +146,12 @@ async def bugs_quicksearch(
     limit: Optional[int] = 50,
     offset: Optional[int] = 0,
     bz: Bugzilla = Depends(get_bz),
-) -> List[Any]:
+) -> dict[str, Any]:
     """Search bugs using bugzilla's quicksearch syntax
 
     To reduce the token limit & response time, only returns a subset of fields for each bug
     The user can query full details of each bug using the bug_info tool
+    Returns the top-level bug data envelope containing the matched bugs.
     """
 
     mcp_log.info(
@@ -137,10 +160,10 @@ async def bugs_quicksearch(
 
     try:
         # We moved quicksearch logic to mcp_utils
-        bugs = await bz.quicksearch(query, status, include_fields, limit, offset)
+        envelope = await bz.quicksearch(query, status, include_fields, limit, offset)
 
-        mcp_log.info(f"[LLM-RES] Found {len(bugs)} bugs")
-        return bugs
+        mcp_log.info(f"[LLM-RES] Returning quicksearch envelope")
+        return envelope
 
     except Exception as e:
         raise ToolError(f"Search failed: {e}")

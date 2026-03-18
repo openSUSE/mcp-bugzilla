@@ -29,15 +29,52 @@ async def test_bug_info(bz_client):
 
         # respx mocks verify the full URL usually.
 
-        respx_mock.get("/rest/bug/123").mock(
+        route_bug = respx_mock.get("/rest/bug").mock(
             return_value=Response(
-                200, json={"bugs": [{"id": 123, "summary": "Test Bug"}]}
+                200, json={"bugs": [
+                    {"id": 123, "summary": "Test Bug"},
+                    {"id": 456, "summary": "Another Bug"}
+                ]}
             )
         )
 
-        bug = await bz_client.bug_info(123)
-        assert bug["id"] == 123
-        assert bug["summary"] == "Test Bug"
+        bug_env = await bz_client.bug_info([123, 456])
+        assert bug_env["bugs"][0]["id"] == 123
+        assert bug_env["bugs"][0]["summary"] == "Test Bug"
+        
+        assert bug_env["bugs"][1]["id"] == 456
+        assert bug_env["bugs"][1]["summary"] == "Another Bug"
+
+        assert route_bug.called
+        assert route_bug.calls.last.request.url.params["id"] == "123,456"
+
+@pytest.mark.asyncio
+async def test_bug_history(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/bug/123/history").mock(
+            return_value=Response(
+                200,
+                json={
+                    "bugs": [{
+                        "id": 123,
+                        "history": [
+                            {"when": "2026-03-09T10:00:00Z", "who": "user@example.com"}
+                        ]
+                    }]
+                }
+            )
+        )
+
+        history = await bz_client.bug_history(123)
+        assert len(history) == 1
+        assert history[0]["when"] == "2026-03-09T10:00:00Z"
+        assert route.called
+        assert "new_since" not in route.calls.last.request.url.params
+
+        test_dt = datetime(2026, 3, 9, 0, 0, 0)
+        history_with_since = await bz_client.bug_history(123, new_since=test_dt)
+        assert len(history_with_since) == 1
+        assert route.calls.last.request.url.params["new_since"] == "2026-03-09T00:00:00Z"
 
 
 @pytest.mark.asyncio
@@ -95,10 +132,10 @@ async def test_quicksearch(bz_client):
         )
 
         # Test with explicit arguments (mandatory in mcp_utils)
-        bugs = await bz_client.quicksearch(
+        search_env = await bz_client.quicksearch(
             "product:Foo", status="ALL", include_fields="id,product", limit=50, offset=0
         )
-        assert len(bugs) == 2
+        assert len(search_env["bugs"]) == 2
 
         # Verify call arguments
         assert route.called
@@ -391,3 +428,7 @@ async def test_update_bug_comment_only(bz_client):
         assert route.called
         request_body = route.calls.last.request.content
         assert b"Just adding a comment" in request_body
+
+
+
+
