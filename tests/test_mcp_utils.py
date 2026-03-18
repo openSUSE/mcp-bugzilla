@@ -44,18 +44,25 @@ async def test_bugzilla_info(bz_client):
 
 
 @pytest.mark.asyncio
-async def test_bug_info(bz_client):
+async def test_bug_info_single(bz_client):
+    """Test fetching info for a single bug ID"""
     async with respx.mock(base_url=MOCK_URL) as respx_mock:
-        # Note: Bugzilla client appends /rest to the base url passed in constructor
-        # and then requests /bug/{id} relative to that.
-        # But the bugzilla client sets base_url of httpx client to .../rest
-        # So we should match against the full URL or careful with defaults.
-        # Given the implementation: self.client = httpx.AsyncClient(base_url=self.api_url, ...)
-        # where self.api_url = url + "/rest"
-        # The request is client.get(f"/bug/{bug_id}") which resolves to {url}/rest/bug/{bug_id}
+        route_bug = respx_mock.get("/rest/bug/123").mock(
+            return_value=Response(
+                200, json={"bugs": [{"id": 123, "summary": "Single Test Bug"}]}
+            )
+        )
 
-        # respx mocks verify the full URL usually.
+        bug_env = await bz_client.bug_info({123})
+        assert len(bug_env["bugs"]) == 1
+        assert bug_env["bugs"][0]["id"] == 123
+        assert bug_env["bugs"][0]["summary"] == "Single Test Bug"
+        assert route_bug.called
 
+@pytest.mark.asyncio
+async def test_bug_info_multiple(bz_client):
+    """Test fetching info for multiple bug IDs"""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
         route_bug = respx_mock.get("/rest/bug").mock(
             return_value=Response(
                 200, json={"bugs": [
@@ -65,15 +72,13 @@ async def test_bug_info(bz_client):
             )
         )
 
-        bug_env = await bz_client.bug_info([123, 456])
-        assert bug_env["bugs"][0]["id"] == 123
-        assert bug_env["bugs"][0]["summary"] == "Test Bug"
-        
-        assert bug_env["bugs"][1]["id"] == 456
-        assert bug_env["bugs"][1]["summary"] == "Another Bug"
+        bug_env = await bz_client.bug_info({123, 456})
+        assert any(b["id"] == 123 for b in bug_env["bugs"])
+        assert any(b["id"] == 456 for b in bug_env["bugs"])
 
         assert route_bug.called
-        assert route_bug.calls.last.request.url.params["id"] == "123,456"
+        id_param = route_bug.calls.last.request.url.params["id"]
+        assert set(id_param.split(",")) == {"123", "456"}
 
 @pytest.mark.asyncio
 async def test_bug_history(bz_client):

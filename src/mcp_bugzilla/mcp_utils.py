@@ -147,11 +147,11 @@ class Bugzilla:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
             raise
 
-    async def bug_info(self, ids: list[int]) -> dict[str, Any]:
+    async def bug_info(self, ids: set[int]) -> dict[str, Any]:
         """Get information about a given bug or list of bugs"""
 
         if len(ids) == 1:
-            url = f"/bug/{ids[0]}"
+            url = f"/bug/{next(iter(ids))}"
             params = {}
         else:
             url = "/bug"
