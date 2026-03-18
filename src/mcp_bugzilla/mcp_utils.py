@@ -103,15 +103,16 @@ class Bugzilla:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
             raise
 
-    async def bug_info(self, bug_id: int) -> dict[str, Any]:
-        """Get information about a given bug"""
-        # Note: self.client has base_url set to .../rest
-        # So we request /bug/{id} relative to that.
-        url = f"/bug/{bug_id}"
-        mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url}")
+    async def bug_info(self, ids: list[int]) -> dict[str, Any]:
+        """Get information about a given bug or list of bugs"""
+
+        url = "/bug"
+        params = {"id": ",".join(str(i) for i in ids)}
+
+        mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} params={params}")
 
         try:
-            r = await self.client.get(url)
+            r = await self.client.get(url, params=params)
             r.raise_for_status()
         except httpx.HTTPStatusError as e:
             mcp_log.error(
@@ -122,10 +123,40 @@ class Bugzilla:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
             raise
 
-        data = r.json().get("bugs", [{}])[0]
-        mcp_log.info(f"[BZ-RES] Found bug {bug_id}")
-        mcp_log.debug(f"[BZ-RES] {data}")
-        return data
+        envelope = r.json()
+        bugs = envelope.get("bugs", [])
+        mcp_log.info(f"[BZ-RES] Retrieved {len(bugs)} bugs")
+        mcp_log.debug(f"[BZ-RES] {envelope}")
+        return envelope
+
+    async def bug_history(
+        self, bug_id: int, new_since: Optional[datetime] = None
+    ) -> list[dict[str, Any]]:
+        """Get history of a bug"""
+        url = f"/bug/{bug_id}/history"
+        params = {}
+        if new_since:
+            params["new_since"] = new_since.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} params={params}")
+
+        try:
+            r = await self.client.get(url, params=params)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            mcp_log.error(
+                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
+            )
+            raise
+        except httpx.RequestError as e:
+            mcp_log.error(f"[BZ-RES] Network Error: {e}")
+            raise
+
+        data = r.json().get("bugs", [])
+        history = data[0].get("history", []) if data else []
+        mcp_log.info(f"[BZ-RES] Found {len(history)} history items")
+        mcp_log.debug(f"[BZ-RES] {history}")
+        return history
 
     async def bug_comments(
         self, bug_id: int, new_since: Optional[datetime] = None
@@ -183,7 +214,7 @@ class Bugzilla:
 
     async def quicksearch(
         self, query: str, status: str, include_fields: str, limit: int, offset: int
-    ) -> list[dict[str, Any]]:
+    ) -> dict[str, Any]:
         """Perform a quicksearch"""
         # Quicksearch isn't a direct REST endpoint usually, but /bug with quicksearch param works
 
@@ -209,9 +240,10 @@ class Bugzilla:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
             raise
 
-        bugs = r.json().get("bugs", [])
+        envelope = r.json()
+        bugs = envelope.get("bugs", [])
         mcp_log.info(f"[BZ-RES] Found {len(bugs)} bugs")
-        return bugs
+        return envelope
 
     async def update_bug(
         self, bug_id: int, updates: dict[str, Any], comment: str = ""

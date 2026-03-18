@@ -24,9 +24,18 @@ The server provides the following tools for interacting with Bugzilla:
 
 #### Bug Information
 
-- **`bug_info(id: int)`**: Retrieves comprehensive details for a specified Bugzilla bug ID.
-  - **Returns**: A dictionary containing all available information about the bug (status, assignee, summary, description, attachments, etc.)
-  - **Example**: `bug_info(12345)` returns complete bug details
+- **`bug_info(bug_ids: list[int])`**: Retrieves comprehensive details for specified Bugzilla bug IDs.
+  - **Parameters**:
+    - `bug_ids`: A list of bug IDs to fetch details for
+  - **Returns**: A dictionary containing the array `bugs` which lists all available information about the bugs (status, assignee, summary, description, extensions, etc.)
+  - **Example**: `bug_info([12345, 67890])` returns complete bug details for the specified IDs.
+
+- **`bug_history(id: int, new_since: Optional[datetime] = None)`**: Fetches the history of changes for a given bug ID.
+  - **Parameters**:
+    - `id`: The bug ID to fetch history for
+    - `new_since`: Optional datetime object to only return history entries newer than this time.
+  - **Returns**: A list of history event dictionaries, each containing timestamp, author, and an array of changes.
+  - **Example**: `bug_history(12345, new_since=datetime.fromisoformat("2026-01-01T00:00:00"))` returns all history changes newer than Jan 1, 2026.
 
 - **`bug_comments(id: int, include_private_comments: bool = False, new_since: Optional[datetime] = None)`**: Fetches all comments associated with a given bug ID.
   - **Parameters**:
@@ -34,7 +43,9 @@ The server provides the following tools for interacting with Bugzilla:
     - `include_private_comments`: Whether to include private comments (default: `False`)
     - `new_since`: Optional datetime object to only return comments newer than this time.
   - **Returns**: A list of comment dictionaries, each containing author, timestamp, text, and privacy status
-  - **Example**: `bug_comments(12345, include_private_comments=True, new_since=datetime.fromisoformat("2024-01-01T00:00:00"))` returns all comments newer than Jan 1, 2024 including private ones
+  - **Example**: `bug_comments(12345, include_private_comments=True, new_since=datetime.fromisoformat("2026-01-01T00:00:00"))` returns all comments newer than Jan 1, 2026 including private ones
+
+
 
 - **`add_comment(bug_id: int, comment: str, is_private: bool = False)`**: Adds a new comment to a specified bug.
   - **Parameters**:
@@ -356,7 +367,7 @@ Set the log level using the `LOG_LEVEL` environment variable:
 
 ```python
 # MCP client call
-result = client.call_tool("bug_info", {"id": 12345})
+result = client.call_tool("bug_info", {"bug_ids": [12345]})
 print(result)
 # Returns complete bug details including status, assignee, summary, etc.
 ```
@@ -384,9 +395,15 @@ result = client.call_tool("add_comment", {
 # Returns: {"id": 67890} - the new comment ID
 ```
 
-### Example 4: Get Bug Comments
+### Example 4: Get Bug History and Comments
 
 ```python
+# Get the history of changes for a bug
+history = client.call_tool("bug_history", {
+    "id": 12345,
+    "new_since": datetime.fromisoformat("2026-01-01T00:00:00")
+})
+
 # Get all public comments
 public_comments = client.call_tool("bug_comments", {
     "id": 12345,
