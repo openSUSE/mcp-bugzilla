@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
+## [v0.12.0] - 2026-03-30
+
+### Added
+- `bugzilla_server_info` tool providing comprehensive Bugzilla server details, replacing the `server_url_resource` tool.
+- `bug_history` tool to retrieve the change history of a bug.
+- `MCP_READ_ONLY` environment variable support for read-only mode.
+- `bug_info` now accepts multiple bug IDs (as a set) in a single call.
+- `quicksearch` now returns the full response envelope.
+
+### Fixed
+- `bug_info` working on a single bug restored.
+- Fastmcp banner no longer shown at startup.
+
+### Chore
+- Refactor `bug_info` methods and tests to accept a set of bug IDs instead of a list.
+- Bump cryptography from 46.0.5 to 46.0.6
+- Bump requests from 2.32.5 to 2.33.0
+- Bump uv from 0.10.11 to 0.11.0
+- Update uv-build requirement
+
 ## [v0.11.0]- 2026-03-18
 
 ### Added
