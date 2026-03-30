@@ -24,11 +24,11 @@ The server provides the following tools for interacting with Bugzilla:
 
 #### Bug Information
 
-- **`bug_info(bug_ids: list[int])`**: Retrieves comprehensive details for specified Bugzilla bug IDs.
+- **`bug_info(bug_ids: set[int])`**: Retrieves comprehensive details for specified Bugzilla bug IDs.
   - **Parameters**:
-    - `bug_ids`: A list of bug IDs to fetch details for
+    - `bug_ids`: A set of bug IDs to fetch details for
   - **Returns**: A dictionary containing the array `bugs` which lists all available information about the bugs (status, assignee, summary, description, extensions, etc.)
-  - **Example**: `bug_info([12345, 67890])` returns complete bug details for the specified IDs.
+  - **Example**: `bug_info({12345, 67890})` returns complete bug details for the specified IDs.
 
 - **`bug_history(id: int, new_since: Optional[datetime] = None)`**: Fetches the history of changes for a given bug ID.
   - **Parameters**:
