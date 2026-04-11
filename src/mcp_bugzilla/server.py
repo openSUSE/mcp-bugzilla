@@ -294,6 +294,9 @@ async def update_bug_status(
     updates = {"status": status}
     if resolution:
         updates["resolution"] = resolution
+    elif status not in ("CLOSED", "VERIFIED"):
+        # Clear resolution when reopening
+        updates["resolution"] = ""
 
     # Validate: CLOSED requires resolution
     if status == "CLOSED" and not resolution:
