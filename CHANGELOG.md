@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
+## [v0.12.1] - 2026-04-13
+
+### Added
+- add `AGENTS.md`
+
+### Fixed
+- Clear resolution when reopening bugs from CLOSED/VERIFIED status.
+
+### Chore
+- Bump fastmcp from 3.1.1 to 3.2.0
+- Bump uv from 0.11.0 to 0.11.6
+- Bump cryptography from 46.0.6 to 46.0.7
+- Bump pygments from 2.19.2 to 2.20.0
+
 ## [v0.12.0] - 2026-03-30
 
 ### Added
