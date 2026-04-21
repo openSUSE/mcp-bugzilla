@@ -59,16 +59,20 @@ async def test_bug_info_single(bz_client):
         assert bug_env["bugs"][0]["summary"] == "Single Test Bug"
         assert route_bug.called
 
+
 @pytest.mark.asyncio
 async def test_bug_info_multiple(bz_client):
     """Test fetching info for multiple bug IDs"""
     async with respx.mock(base_url=MOCK_URL) as respx_mock:
         route_bug = respx_mock.get("/rest/bug").mock(
             return_value=Response(
-                200, json={"bugs": [
-                    {"id": 123, "summary": "Test Bug"},
-                    {"id": 456, "summary": "Another Bug"}
-                ]}
+                200,
+                json={
+                    "bugs": [
+                        {"id": 123, "summary": "Test Bug"},
+                        {"id": 456, "summary": "Another Bug"},
+                    ]
+                },
             )
         )
 
@@ -80,6 +84,7 @@ async def test_bug_info_multiple(bz_client):
         id_param = route_bug.calls.last.request.url.params["id"]
         assert set(id_param.split(",")) == {"123", "456"}
 
+
 @pytest.mark.asyncio
 async def test_bug_history(bz_client):
     async with respx.mock(base_url=MOCK_URL) as respx_mock:
@@ -87,13 +92,18 @@ async def test_bug_history(bz_client):
             return_value=Response(
                 200,
                 json={
-                    "bugs": [{
-                        "id": 123,
-                        "history": [
-                            {"when": "2026-03-09T10:00:00Z", "who": "user@example.com"}
-                        ]
-                    }]
-                }
+                    "bugs": [
+                        {
+                            "id": 123,
+                            "history": [
+                                {
+                                    "when": "2026-03-09T10:00:00Z",
+                                    "who": "user@example.com",
+                                }
+                            ],
+                        }
+                    ]
+                },
             )
         )
 
@@ -106,7 +116,9 @@ async def test_bug_history(bz_client):
         test_dt = datetime(2026, 3, 9, 0, 0, 0)
         history_with_since = await bz_client.bug_history(123, new_since=test_dt)
         assert len(history_with_since) == 1
-        assert route.calls.last.request.url.params["new_since"] == "2026-03-09T00:00:00Z"
+        assert (
+            route.calls.last.request.url.params["new_since"] == "2026-03-09T00:00:00Z"
+        )
 
 
 @pytest.mark.asyncio
@@ -137,7 +149,9 @@ async def test_bug_comments(bz_client):
         test_dt = datetime(2000, 1, 1, 0, 0, 0)
         comments_with_since = await bz_client.bug_comments(123, new_since=test_dt)
         assert len(comments_with_since) == 2
-        assert route.calls.last.request.url.params["new_since"] == "2000-01-01T00:00:00Z"
+        assert (
+            route.calls.last.request.url.params["new_since"] == "2000-01-01T00:00:00Z"
+        )
 
 
 @pytest.mark.asyncio
@@ -178,6 +192,7 @@ async def test_quicksearch(bz_client):
         assert "include_fields" in params
         assert params["include_fields"] == "id,product"
 
+
 @pytest.mark.asyncio
 async def test_update_bug_single_field(bz_client):
     """Test updating a single field"""
@@ -186,21 +201,20 @@ async def test_update_bug_single_field(bz_client):
             return_value=Response(
                 200,
                 json={
-                    "bugs": [{
-                        "id": 123,
-                        "changes": {
-                            "priority": {"removed": "low", "added": "high"}
-                        },
-                        "last_change_time": "2026-03-09T10:00:00Z"
-                    }]
-                }
+                    "bugs": [
+                        {
+                            "id": 123,
+                            "changes": {
+                                "priority": {"removed": "low", "added": "high"}
+                            },
+                            "last_change_time": "2026-03-09T10:00:00Z",
+                        }
+                    ]
+                },
             )
         )
 
-        result = await bz_client.update_bug(
-            bug_id=123,
-            updates={"priority": "high"}
-        )
+        result = await bz_client.update_bug(bug_id=123, updates={"priority": "high"})
 
         assert result["bugs"][0]["id"] == 123
         assert "priority" in result["bugs"][0]["changes"]
@@ -215,25 +229,23 @@ async def test_update_bug_multiple_fields(bz_client):
             return_value=Response(
                 200,
                 json={
-                    "bugs": [{
-                        "id": 123,
-                        "changes": {
-                            "priority": {"removed": "low", "added": "high"},
-                            "severity": {"removed": "medium", "added": "urgent"},
-                            "status": {"removed": "NEW", "added": "ASSIGNED"}
+                    "bugs": [
+                        {
+                            "id": 123,
+                            "changes": {
+                                "priority": {"removed": "low", "added": "high"},
+                                "severity": {"removed": "medium", "added": "urgent"},
+                                "status": {"removed": "NEW", "added": "ASSIGNED"},
+                            },
                         }
-                    }]
-                }
+                    ]
+                },
             )
         )
 
         result = await bz_client.update_bug(
             bug_id=123,
-            updates={
-                "priority": "high",
-                "severity": "urgent",
-                "status": "ASSIGNED"
-            }
+            updates={"priority": "high", "severity": "urgent", "status": "ASSIGNED"},
         )
 
         changes = result["bugs"][0]["changes"]
@@ -251,21 +263,23 @@ async def test_update_bug_with_comment(bz_client):
             return_value=Response(
                 200,
                 json={
-                    "bugs": [{
-                        "id": 123,
-                        "changes": {
-                            "status": {"removed": "NEW", "added": "CLOSED"},
-                            "resolution": {"removed": "", "added": "FIXED"}
+                    "bugs": [
+                        {
+                            "id": 123,
+                            "changes": {
+                                "status": {"removed": "NEW", "added": "CLOSED"},
+                                "resolution": {"removed": "", "added": "FIXED"},
+                            },
                         }
-                    }]
-                }
+                    ]
+                },
             )
         )
 
         result = await bz_client.update_bug(
             bug_id=123,
             updates={"status": "CLOSED", "resolution": "FIXED"},
-            comment="Fixed in commit abc123"
+            comment="Fixed in commit abc123",
         )
 
         assert result["bugs"][0]["id"] == 123
@@ -283,20 +297,21 @@ async def test_update_bug_close_with_resolution(bz_client):
             return_value=Response(
                 200,
                 json={
-                    "bugs": [{
-                        "id": 123,
-                        "changes": {
-                            "status": {"removed": "ASSIGNED", "added": "CLOSED"},
-                            "resolution": {"removed": "", "added": "FIXED"}
+                    "bugs": [
+                        {
+                            "id": 123,
+                            "changes": {
+                                "status": {"removed": "ASSIGNED", "added": "CLOSED"},
+                                "resolution": {"removed": "", "added": "FIXED"},
+                            },
                         }
-                    }]
-                }
+                    ]
+                },
             )
         )
 
         result = await bz_client.update_bug(
-            bug_id=123,
-            updates={"status": "CLOSED", "resolution": "FIXED"}
+            bug_id=123, updates={"status": "CLOSED", "resolution": "FIXED"}
         )
 
         changes = result["bugs"][0]["changes"]
@@ -312,25 +327,23 @@ async def test_update_bug_duplicate_fields(bz_client):
             return_value=Response(
                 200,
                 json={
-                    "bugs": [{
-                        "id": 123,
-                        "changes": {
-                            "status": {"removed": "NEW", "added": "CLOSED"},
-                            "resolution": {"removed": "", "added": "DUPLICATE"},
-                            "dupe_of": {"removed": "", "added": "456"}
+                    "bugs": [
+                        {
+                            "id": 123,
+                            "changes": {
+                                "status": {"removed": "NEW", "added": "CLOSED"},
+                                "resolution": {"removed": "", "added": "DUPLICATE"},
+                                "dupe_of": {"removed": "", "added": "456"},
+                            },
                         }
-                    }]
-                }
+                    ]
+                },
             )
         )
 
         result = await bz_client.update_bug(
             bug_id=123,
-            updates={
-                "status": "CLOSED",
-                "resolution": "DUPLICATE",
-                "dupe_of": 456
-            }
+            updates={"status": "CLOSED", "resolution": "DUPLICATE", "dupe_of": 456},
         )
 
         changes = result["bugs"][0]["changes"]
@@ -348,18 +361,18 @@ async def test_update_bug_not_found(bz_client):
                 json={
                     "error": True,
                     "message": "Bug #999999 does not exist.",
-                    "code": 101
-                }
+                    "code": 101,
+                },
             )
         )
 
         with pytest.raises(Exception) as exc_info:
-            await bz_client.update_bug(
-                bug_id=999999,
-                updates={"priority": "high"}
-            )
+            await bz_client.update_bug(bug_id=999999, updates={"priority": "high"})
 
-        assert "404" in str(exc_info.value) or "does not exist" in str(exc_info.value).lower()
+        assert (
+            "404" in str(exc_info.value)
+            or "does not exist" in str(exc_info.value).lower()
+        )
 
 
 @pytest.mark.asyncio
@@ -372,18 +385,20 @@ async def test_update_bug_permission_denied(bz_client):
                 json={
                     "error": True,
                     "message": "You are not authorized to edit this bug",
-                    "code": 102
-                }
+                    "code": 102,
+                },
             )
         )
 
         with pytest.raises(Exception) as exc_info:
             await bz_client.update_bug(
-                bug_id=123,
-                updates={"assigned_to": "other@example.com"}
+                bug_id=123, updates={"assigned_to": "other@example.com"}
             )
 
-        assert "401" in str(exc_info.value) or "not authorized" in str(exc_info.value).lower()
+        assert (
+            "401" in str(exc_info.value)
+            or "not authorized" in str(exc_info.value).lower()
+        )
 
 
 @pytest.mark.asyncio
@@ -396,18 +411,20 @@ async def test_update_bug_validation_error(bz_client):
                 json={
                     "error": True,
                     "message": "You must provide a resolution when status is CLOSED",
-                    "code": 121
-                }
+                    "code": 121,
+                },
             )
         )
 
         with pytest.raises(Exception) as exc_info:
             await bz_client.update_bug(
                 bug_id=123,
-                updates={"status": "CLOSED"}  # Missing required resolution
+                updates={"status": "CLOSED"},  # Missing required resolution
             )
 
-        assert "400" in str(exc_info.value) or "resolution" in str(exc_info.value).lower()
+        assert (
+            "400" in str(exc_info.value) or "resolution" in str(exc_info.value).lower()
+        )
 
 
 @pytest.mark.asyncio
@@ -415,21 +432,10 @@ async def test_update_bug_empty_updates(bz_client):
     """Test behavior with empty updates dictionary"""
     async with respx.mock(base_url=MOCK_URL) as respx_mock:
         respx_mock.put("/rest/bug/123").mock(
-            return_value=Response(
-                200,
-                json={
-                    "bugs": [{
-                        "id": 123,
-                        "changes": {}
-                    }]
-                }
-            )
+            return_value=Response(200, json={"bugs": [{"id": 123, "changes": {}}]})
         )
 
-        result = await bz_client.update_bug(
-            bug_id=123,
-            updates={}
-        )
+        result = await bz_client.update_bug(bug_id=123, updates={})
 
         assert result["bugs"][0]["changes"] == {}
 
@@ -439,28 +445,14 @@ async def test_update_bug_comment_only(bz_client):
     """Test adding comment without field updates"""
     async with respx.mock(base_url=MOCK_URL) as respx_mock:
         route = respx_mock.put("/rest/bug/123").mock(
-            return_value=Response(
-                200,
-                json={
-                    "bugs": [{
-                        "id": 123,
-                        "changes": {}
-                    }]
-                }
-            )
+            return_value=Response(200, json={"bugs": [{"id": 123, "changes": {}}]})
         )
 
         result = await bz_client.update_bug(
-            bug_id=123,
-            updates={},
-            comment="Just adding a comment"
+            bug_id=123, updates={}, comment="Just adding a comment"
         )
 
         assert result["bugs"][0]["id"] == 123
         assert route.called
         request_body = route.calls.last.request.content
         assert b"Just adding a comment" in request_body
-
-
-
-

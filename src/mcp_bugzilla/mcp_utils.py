@@ -135,7 +135,9 @@ class Bugzilla:
                 "time": time_data.get("web_time"),
                 "parameters": parameters_data.get("parameters", {}),
             }
-            mcp_log.info(f"[BZ-RES] Retrieved bugzilla server info from {self.base_url}")
+            mcp_log.info(
+                f"[BZ-RES] Retrieved bugzilla server info from {self.base_url}"
+            )
             return result
 
         except httpx.HTTPStatusError as e:
