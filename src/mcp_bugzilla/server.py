@@ -55,10 +55,7 @@ async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
 
 
 @mcp.tool()
-async def bug_info(
-    bug_ids: set[int],
-    bz: Bugzilla = Depends(get_bz)
-) -> dict[str, Any]:
+async def bug_info(bug_ids: set[int], bz: Bugzilla = Depends(get_bz)) -> dict[str, Any]:
     """Returns the entire information for one or more bugzilla bug ids."""
 
     mcp_log.info(f"[LLM-REQ] bug_info(ids={bug_ids})")
@@ -69,6 +66,7 @@ async def bug_info(
 
     except Exception as e:
         raise ToolError(f"Failed to fetch bug info\nReason: {e}")
+
 
 @mcp.tool()
 async def bug_history(
