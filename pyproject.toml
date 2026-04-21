@@ -7,7 +7,7 @@ requires-python = "==3.13.*"
 
 dependencies = [
     "fastmcp==3.2.3",
-    "httpx-retries>=0.4.5",
+    "httpx-retries>=0.5.0",
 ]
 
 [project.optional-dependencies]
