@@ -54,7 +54,7 @@ async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
         await bz.close()
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bug_info(bug_ids: set[int], bz: Bugzilla = Depends(get_bz)) -> dict[str, Any]:
     """Returns the entire information for one or more bugzilla bug ids."""
 
@@ -68,7 +68,7 @@ async def bug_info(bug_ids: set[int], bz: Bugzilla = Depends(get_bz)) -> dict[st
         raise ToolError(f"Failed to fetch bug info\nReason: {e}")
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bug_history(
     id: int,
     new_since: Optional[datetime] = None,
@@ -88,7 +88,7 @@ async def bug_history(
         raise ToolError(f"Failed to fetch bug history\nReason: {e}")
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bug_comments(
     id: int,
     include_private_comments: bool = False,
@@ -122,7 +122,10 @@ async def bug_comments(
         raise ToolError(f"Failed to fetch bug comments\nReason: {e}")
 
 
-@mcp.tool(tags={"write"})
+@mcp.tool(
+    annotations={"readOnlyHint": False, "destructiveHint": True, "openWorldHint": True},
+    tags={"write"},
+)
 async def add_comment(
     bug_id: int, comment: str, is_private: bool = False, bz: Bugzilla = Depends(get_bz)
 ) -> dict[str, int]:
@@ -137,7 +140,7 @@ async def add_comment(
         raise ToolError(f"Failed to create a comment\n{e}")
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bugs_quicksearch(
     query: str,
     status: Optional[str] = "ALL",
@@ -170,7 +173,7 @@ async def bugs_quicksearch(
         raise ToolError(f"Search failed: {e}")
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def quicksearch_syntax_resource(bz: Bugzilla = Depends(get_bz)) -> str:
     """Access the documentation of the bugzilla quicksearch syntax. LLM can learn using this tool. Response is in HTML"""
 
@@ -195,7 +198,7 @@ async def quicksearch_syntax_resource(bz: Bugzilla = Depends(get_bz)) -> str:
         raise ResourceError(f"Failed to fetch quicksearch documentation: {e}")
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bugzilla_server_info(bz: Bugzilla = Depends(get_bz)) -> dict[str, Any]:
     """Returns comprehensive bugzilla server information (url, version, extensions, timezone, time, parameters)."""
     mcp_log.info("[LLM-REQ] bugzilla_server_info()")
@@ -205,14 +208,14 @@ async def bugzilla_server_info(bz: Bugzilla = Depends(get_bz)) -> dict[str, Any]
         raise ToolError(f"Failed to fetch bugzilla server info\nReason: {e}")
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False}, tags={"read"})
 def bug_url(bug_id: int) -> str:
     """returns the bug url"""
     mcp_log.info(f"[LLM-REQ] bug_url(bug_id={bug_id})")
     return f"{base_url}/show_bug.cgi?id={bug_id}"
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def mcp_server_info_resource(bz: Bugzilla = Depends(get_bz)) -> dict[str, Any]:
     """Returns the args being used by the current server instance"""
 
@@ -231,14 +234,14 @@ async def mcp_server_info_resource(bz: Bugzilla = Depends(get_bz)) -> dict[str, 
     return info
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 def get_current_headers_resource(headers: dict = CurrentHeaders()) -> dict[str, Any]:
     """Returns the headers being provided by the current http request"""
     mcp_log.info("[LLM-REQ] get_current_headers_resource()")
     return headers
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def summarize_bug_prompt(id: int, bz: Bugzilla = Depends(get_bz)) -> str:
     """Summarizes all the comments of a bug"""
 
@@ -266,7 +269,14 @@ async def summarize_bug_prompt(id: int, bz: Bugzilla = Depends(get_bz)) -> str:
         raise PromptError(f"Summarize Comments Failed\nReason: {e}")
 
 
-@mcp.tool(tags={"write"})
+@mcp.tool(
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": True,
+    },
+    tags={"write"},
+)
 async def update_bug_status(
     bug_id: int,
     status: str,
@@ -309,7 +319,14 @@ async def update_bug_status(
         raise ToolError(f"Failed to update bug status\n{e}")
 
 
-@mcp.tool(tags={"write"})
+@mcp.tool(
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": True,
+    },
+    tags={"write"},
+)
 async def assign_bug(
     bug_id: int, assignee: str, comment: str = "", bz: Bugzilla = Depends(get_bz)
 ) -> dict[str, Any]:
@@ -328,7 +345,14 @@ async def assign_bug(
         raise ToolError(f"Failed to assign bug\n{e}")
 
 
-@mcp.tool(tags={"write"})
+@mcp.tool(
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": True,
+    },
+    tags={"write"},
+)
 async def update_bug_fields(
     bug_id: int,
     priority: Optional[str] = None,
@@ -368,7 +392,14 @@ async def update_bug_fields(
         raise ToolError(f"Failed to update bug fields\n{e}")
 
 
-@mcp.tool(tags={"write"})
+@mcp.tool(
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": True,
+    },
+    tags={"write"},
+)
 async def add_cc_to_bug(
     bug_id: int, cc_email: str, bz: Bugzilla = Depends(get_bz)
 ) -> dict[str, Any]:
@@ -386,7 +417,14 @@ async def add_cc_to_bug(
         raise ToolError(f"Failed to add CC\n{e}")
 
 
-@mcp.tool(tags={"write"})
+@mcp.tool(
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": True,
+    },
+    tags={"write"},
+)
 async def mark_as_duplicate(
     bug_id: int, duplicate_of: int, comment: str = "", bz: Bugzilla = Depends(get_bz)
 ) -> dict[str, Any]:
