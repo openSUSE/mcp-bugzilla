@@ -358,6 +358,7 @@ async def update_bug_fields(
     priority: Optional[str] = None,
     severity: Optional[str] = None,
     resolution: Optional[str] = None,
+    custom_fields: Optional[dict[str, Any]] = None,
     comment: str = "",
     bz: Bugzilla = Depends(get_bz),
 ) -> dict[str, Any]:
@@ -368,6 +369,7 @@ async def update_bug_fields(
         priority: Priority (e.g., urgent, high, medium, low, unspecified)
         severity: Severity (e.g., urgent, high, medium, low, unspecified)
         resolution: Resolution (e.g., FIXED, WONTFIX, NOTABUG, DUPLICATE) - only for closed bugs
+        custom_fields: Dict of custom fields e.g. {"cf_fixed_in": "1.2.3"}
         comment: Optional comment explaining the changes
     """
     mcp_log.info(
@@ -381,6 +383,8 @@ async def update_bug_fields(
         updates["severity"] = severity
     if resolution:
         updates["resolution"] = resolution
+    if custom_fields:
+        updates.update(custom_fields)
 
     if not updates:
         raise ToolError("At least one field must be specified")
