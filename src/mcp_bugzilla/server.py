@@ -393,6 +393,57 @@ async def update_bug_fields(
 
 
 @mcp.tool(
+    tags={"write"},
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": True,
+    },
+)
+async def update_bug_dependencies(
+    bug_id: int,
+    blocks_add: Optional[list[int]] = None,
+    blocks_remove: Optional[list[int]] = None,
+    depends_on_add: Optional[list[int]] = None,
+    depends_on_remove: Optional[list[int]] = None,
+    comment: str = "",
+    bz: Bugzilla = Depends(get_bz),
+) -> dict[str, Any]:
+    """Update bug dependency relationships (blocks/depends_on).
+
+    Args:
+        bug_id: Bug ID to update
+        blocks_add: List of bug IDs this bug should block
+        blocks_remove: List of bug IDs to remove from blocks
+        depends_on_add: List of bug IDs this bug should depend on
+        depends_on_remove: List of bug IDs to remove from depends_on
+        comment: Optional comment explaining the changes
+    """
+    updates = {}
+    if blocks_add or blocks_remove:
+        updates["blocks"] = {}
+        if blocks_add:
+            updates["blocks"]["add"] = blocks_add
+        if blocks_remove:
+            updates["blocks"]["remove"] = blocks_remove
+    if depends_on_add or depends_on_remove:
+        updates["depends_on"] = {}
+        if depends_on_add:
+            updates["depends_on"]["add"] = depends_on_add
+        if depends_on_remove:
+            updates["depends_on"]["remove"] = depends_on_remove
+
+    if not updates:
+        raise ToolError("At least one dependency change must be specified")
+
+    try:
+        result = await bz.update_bug(bug_id, updates, comment)
+        return result
+    except Exception as e:
+        raise ToolError(f"Failed to update bug dependencies\n{e}")
+
+
+@mcp.tool(
     annotations={
         "readOnlyHint": False,
         "destructiveHint": False,
