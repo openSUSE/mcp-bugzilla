@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
+## [v0.13.0] - 2026-05-31
+
+### Added
+- add `update_bug_dependencies` tool for blocks/depends_on management
+- add custom field support to `update_bug_fields`
+- add MCP tool annotations and read/write tags
+- publishing to PyPi
+
+### Chore
+- Bump fastmcp from 3.2.0 to 3.3.1
+- Bump uv from 0.11.6 to 0.11.16
+- Bump httpx-retries from 0.4.6 to 0.5.0
+- Bump authlib from 1.6.9 to 1.6.12
+- Bump python-multipart from 0.0.22 to 0.0.27
+- Bump pytest from 9.0.2 to 9.0.3
+- Bump respx from 0.22.0 to 0.23.1
+- Bump python-dotenv from 1.2.1 to 1.2.2
+- Bump urllib3 from 2.6.3 to 2.7.0
+- Bump idna from 3.11 to 3.15
+
 ## [v0.12.1] - 2026-04-13
 
 ### Added
