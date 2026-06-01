@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
+## [v0.13.1] - 2026-06-01
+
+### Fixed
+- Upgrade GitHub Actions and improve test job configuration
+- set minimum python version only instead of pinning
+- rename CI job to fit the action
+
 ## [v0.13.0] - 2026-05-31
 
 ### Added
