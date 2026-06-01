@@ -148,6 +148,13 @@ The server provides the following tools for interacting with Bugzilla:
 
 ## Installation
 
+### PyPi
+
+```
+uvx mcp-bugzilla
+
+```
+
 ### Docker / Podman
 
 The easiest way to run the server is using Docker or Podman:
