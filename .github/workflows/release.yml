@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 jobs:
-  build-and-publish:
+  publish_to_pypi:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
