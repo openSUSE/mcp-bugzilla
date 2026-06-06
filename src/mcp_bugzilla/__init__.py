@@ -49,6 +49,21 @@ def main():
         default=os.getenv("MCP_READ_ONLY", "false").lower() == "true",
         help="Disables all methods which modify the state of the bug. Environment variable MCP_READ_ONLY=true can also be used.",
     )
+
+    parser.add_argument(
+        "--transport",
+        type=str,
+        choices=["http", "stdio"],
+        default=os.getenv("MCP_TRANSPORT", "http"),
+        help="Transport for the MCP server: 'http' (default) or 'stdio'. Environment variable MCP_TRANSPORT can also be used.",
+    )
+
+    parser.add_argument(
+        "--api-key",
+        type=str,
+        default=os.getenv("BUGZILLA_API_KEY"),
+        help="Bugzilla API key. Required for --transport stdio (no HTTP headers exist there). Environment variable BUGZILLA_API_KEY can also be used. Ignored for --transport http (clients send the key per-request via the API key header).",
+    )
     args = parser.parse_args()
 
     # The default behavior of argparse with os.getenv already handles the priority:
@@ -59,6 +74,25 @@ def main():
             "Error: --bugzilla-server argument or BUGZILLA_SERVER environment variable must be set. Exiting."
         )
         sys.exit(1)
+
+    # Stdio transport has no HTTP request scope, so --host/--port are meaningless
+    # and the API key must be provided up-front (env var or CLI flag).
+    # We sniff sys.argv because argparse can't natively tell a default value from
+    # an explicit pass (env-var defaults muddy the comparison further).
+    if args.transport == "stdio":
+        explicit_host_or_port = any(
+            tok == "--host"
+            or tok == "--port"
+            or tok.startswith("--host=")
+            or tok.startswith("--port=")
+            for tok in sys.argv[1:]
+        )
+        if explicit_host_or_port:
+            parser.error("--host/--port are not valid with --transport stdio")
+        if not args.api_key:
+            parser.error(
+                "--transport stdio requires --api-key or the BUGZILLA_API_KEY environment variable"
+            )
 
     server.cli_args = args
     server.start()

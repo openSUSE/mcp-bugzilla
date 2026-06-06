@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
+## [Unreleased]
+
+### Added
+- add stdio transport (`--transport stdio`, `BUGZILLA_API_KEY` / `--api-key` for auth)
+- remove uv from dev dependencies (redundant)
+
+### Fixed
+- Upgrade GitHub Actions and improve test job configuration
+- set minimum python version only instead of pinning
+- rename CI job to fit the action
+
 ## [v0.13.1] - 2026-06-01
 
 ### Fixed
@@ -76,7 +87,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `update_bug_fields`: Modify priority, severity, and resolution
   - `add_cc_to_bug`: Add email addresses to CC list
   - `mark_as_duplicate`: Properly close bugs as duplicates with both status, resolution, and dupe_of fields
-- Add `--read-only` CLI flag to disable tools which can modify status of a bug
+  - Add `--read-only` CLI flag to disable tools which can modify status of a bug
 
 ### Fixed
 - Add missing CLI flag `--use-auth-header`

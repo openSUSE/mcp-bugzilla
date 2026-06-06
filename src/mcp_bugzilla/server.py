@@ -33,14 +33,28 @@ read_only: bool = False
 
 @asynccontextmanager
 async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
-    """Dependency to get the current Bugzilla client"""
+    """Dependency to get the current Bugzilla client.
+
+    For http transport, the API key is read per-request from the configured header.
+    For stdio transport, there is no HTTP request scope, so the key comes from
+    the CLI flag / BUGZILLA_API_KEY env var captured at startup.
+    """
     mcp_log.debug("api_key: Checking")
 
-    api_key_header = getattr(cli_args, "api_key_header", "ApiKey")
-    api_key_value = headers.get(api_key_header.lower())
+    transport = getattr(cli_args, "transport", "http")
 
-    if not api_key_value:
-        raise ValidationError(f"`{api_key_header}` header is required")
+    if transport == "stdio":
+        api_key_value = getattr(cli_args, "api_key", None)
+        if not api_key_value:
+            # Defense in depth; main() already validates this at startup.
+            raise ValidationError(
+                "stdio transport requires --api-key or BUGZILLA_API_KEY env var"
+            )
+    else:
+        api_key_header = getattr(cli_args, "api_key_header", "ApiKey")
+        api_key_value = headers.get(api_key_header.lower())
+        if not api_key_value:
+            raise ValidationError(f"`{api_key_header}` header is required")
 
     mcp_log.debug("api_key: Found")
     bz = Bugzilla(
@@ -556,6 +570,16 @@ def start():
     disable_components_selectively()
     disable_write_components()
 
-    mcp_log.info(f"Starting Bugzilla MCP server on {cli_args.host}:{cli_args.port}")
+    transport = getattr(cli_args, "transport", "http")
 
-    mcp.run(transport="http", host=cli_args.host, port=cli_args.port, show_banner=False)
+    if transport == "stdio":
+        mcp_log.info("Starting Bugzilla MCP server on stdio")
+        mcp.run(transport="stdio", show_banner=False)
+    else:
+        mcp_log.info(f"Starting Bugzilla MCP server on {cli_args.host}:{cli_args.port}")
+        mcp.run(
+            transport="http",
+            host=cli_args.host,
+            port=cli_args.port,
+            show_banner=False,
+        )

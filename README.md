@@ -200,11 +200,15 @@ The `mcp-bugzilla` command supports the following options:
 | Argument | Environment Variable | Default | Description |
 |----------|---------------------|---------|-------------|
 | `--bugzilla-server <URL>` | `BUGZILLA_SERVER` | *Required* | Base URL of the Bugzilla server (e.g., `https://bugzilla.example.com`) |
-| `--host <ADDRESS>` | `MCP_HOST` | `127.0.0.1` | Host address for the MCP server to listen on |
-| `--port <PORT>` | `MCP_PORT` | `8000` | Port for the MCP server to listen on |
-| `--api-key-header <HEADER_NAME>` | `MCP_API_KEY_HEADER` | `ApiKey` | HTTP header name for the Bugzilla API key |
+| `--transport {http,stdio}` | `MCP_TRANSPORT` | `http` | Transport for the MCP server. `stdio` is for direct subprocess launches by an MCP client; `http` exposes a network endpoint |
+| `--host <ADDRESS>` | `MCP_HOST` | `127.0.0.1` | Host address for the MCP server to listen on (http transport only) |
+| `--port <PORT>` | `MCP_PORT` | `8000` | Port for the MCP server to listen on (http transport only) |
+| `--api-key <KEY>` | `BUGZILLA_API_KEY` | *Required for stdio* | Bugzilla API key. Required with `--transport stdio` (no HTTP headers exist there). Ignored for `--transport http`, where clients send the key per-request via the API key header |
+| `--api-key-header <HEADER_NAME>` | `MCP_API_KEY_HEADER` | `ApiKey` | HTTP header name for the Bugzilla API key (http transport only) |
 | `--use-auth-header` | `USE_AUTH_HEADER` | `False` | Use `Authorization: Bearer` header instead of `api_key` query parameter |
 | `--read-only` | `MCP_READ_ONLY` | `False` | Disables all tools which can modify a bug. Works well in conjunction with `MCP_BUGZILLA_DISABLED_METHODS` |
+
+**Note**: `--host` and `--port` are rejected with an error when used together with `--transport stdio`.
 
 **Note**: Command-line arguments take precedence over environment variables.
 
@@ -244,6 +248,17 @@ mcp-bugzilla --bugzilla-server https://bugzilla.opensuse.org
 ```
 
 The server will start listening on `http://127.0.0.1:8000/mcp/` by default.
+
+#### Stdio transport
+
+For MCP clients that launch the server as a subprocess and speak over stdin/stdout (e.g. Claude Desktop-style configs), use `--transport stdio`. Because there is no per-request HTTP scope, the Bugzilla API key must be provided up front via `BUGZILLA_API_KEY` or `--api-key`:
+
+```bash
+BUGZILLA_API_KEY=your_api_key \
+  mcp-bugzilla --bugzilla-server https://bugzilla.opensuse.org --transport stdio
+```
+
+`--host` and `--port` are not valid in stdio mode and will cause the server to exit with an error.
 
 ### Endpoint
 
