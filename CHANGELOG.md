@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [v0.14.0] - 2026-06-08
+
 ### Added
 - add stdio transport (`--transport stdio`, `BUGZILLA_API_KEY` / `--api-key` for auth)
 - warn at startup when `--api-key` / `BUGZILLA_API_KEY` is set with `--transport http` (the key is ignored in http mode; clients send it per-request)
@@ -15,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Upgrade GitHub Actions and improve test job configuration
 - set minimum python version only instead of pinning
 - rename CI job to fit the action
+
 
 ## [v0.13.1] - 2026-06-01
 

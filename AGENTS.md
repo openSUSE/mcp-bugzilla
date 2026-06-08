@@ -85,10 +85,9 @@ docker run -p 8000:8000 \
 
 ## Publishing a New Release
 
-1. Bump `version` in `pyproject.toml`.
-2. Update `CHANGELOG.md`.
-3. Tag the commit and push.
-4. Run `publish-image.sh` to push the Docker image to Docker Hub.
+1. create a new git branch 
+2. Bump `version` in `pyproject.toml` using `uv version --bump` based on `git diff` since previous tag 
+3. Add entry to `CHANGELOG.md` listing the changes.
 
 ## Key Dependencies
 
