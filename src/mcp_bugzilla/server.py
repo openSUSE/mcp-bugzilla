@@ -572,14 +572,12 @@ def start():
 
     transport = getattr(cli_args, "transport", "http")
 
-    if transport == "stdio":
-        mcp_log.info("Starting Bugzilla MCP server on stdio")
-        mcp.run(transport="stdio", show_banner=False)
-    else:
+    run_kwargs = {"show_banner": False, "transport": transport}
+
+    if transport != "stdio":
+        run_kwargs.update({"host": cli_args.host, "port": cli_args.port})
         mcp_log.info(f"Starting Bugzilla MCP server on {cli_args.host}:{cli_args.port}")
-        mcp.run(
-            transport="http",
-            host=cli_args.host,
-            port=cli_args.port,
-            show_banner=False,
-        )
+    else:
+        mcp_log.info("Starting Bugzilla MCP server on stdio")
+
+    mcp.run(**run_kwargs)

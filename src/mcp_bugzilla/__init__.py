@@ -93,6 +93,15 @@ def main():
             parser.error(
                 "--transport stdio requires --api-key or the BUGZILLA_API_KEY environment variable"
             )
+    elif args.transport == "http" and args.api_key:
+        # In http mode the server takes the API key from each client's per-request
+        # header; the startup-time --api-key / BUGZILLA_API_KEY is unused. Warn so
+        # the user cleans the config and doesn't think they're authenticating.
+        mcp_log.warning(
+            "--api-key / BUGZILLA_API_KEY is set but ignored with --transport http "
+            "(clients send the key per-request via the API key header). "
+            "Unset it to clean the config."
+        )
 
     server.cli_args = args
     server.start()

@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 - add stdio transport (`--transport stdio`, `BUGZILLA_API_KEY` / `--api-key` for auth)
+- warn at startup when `--api-key` / `BUGZILLA_API_KEY` is set with `--transport http` (the key is ignored in http mode; clients send it per-request)
 - remove uv from dev dependencies (redundant)
 
 ### Fixed
