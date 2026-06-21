@@ -171,6 +171,77 @@ async def test_add_comment(bz_client):
 
 
 @pytest.mark.asyncio
+async def test_create_bug(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.post("/rest/bug").mock(
+            return_value=Response(200, json={"id": 777})
+        )
+
+        fields = {
+            "product": "TestProduct",
+            "component": "TestComponent",
+            "summary": "A new bug",
+            "version": "unspecified",
+            "description": "Steps to reproduce ...",
+        }
+        resp = await bz_client.create_bug(fields)
+
+        assert resp == {"id": 777}
+        assert route.called
+        # API key is forwarded and the fields are in the POST body.
+        assert bz_client.api_key in str(route.calls.last.request.url)
+        body = route.calls.last.request.content
+        assert b'"product"' in body
+        assert b"TestComponent" in body
+
+
+@pytest.mark.asyncio
+async def test_create_bug_missing_required_field_surfaces_error(bz_client):
+    """A Bugzilla validation error (missing field) propagates to the caller."""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.post("/rest/bug").mock(
+            return_value=Response(
+                400,
+                json={
+                    "error": True,
+                    "message": "You must select/enter a component.",
+                    "code": 106,
+                },
+            )
+        )
+
+        with pytest.raises(Exception) as exc_info:
+            await bz_client.create_bug({"product": "P", "summary": "S"})
+
+        assert (
+            "400" in str(exc_info.value) or "component" in str(exc_info.value).lower()
+        )
+
+
+@pytest.mark.asyncio
+async def test_add_attachment(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.post("/rest/bug/123/attachment").mock(
+            return_value=Response(201, json={"ids": [42]})
+        )
+
+        payload = {
+            "ids": [123],
+            "file_name": "log.txt",
+            "summary": "failing testsuite output",
+            "data": "aGVsbG8=",  # base64("hello")
+            "content_type": "text/plain",
+        }
+        resp = await bz_client.add_attachment(123, payload)
+
+        assert resp == {"ids": [42]}
+        assert route.called
+        body = route.calls.last.request.content
+        assert b"aGVsbG8=" in body
+        assert b"log.txt" in body
+
+
+@pytest.mark.asyncio
 async def test_quicksearch(bz_client):
     async with respx.mock(base_url=MOCK_URL) as respx_mock:
         route = respx_mock.get("/rest/bug").mock(
