@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- `create_bug` tool: file a new bug (product, component, summary, version,
+  description required; optional op_sys, platform, priority, severity, cc,
+  custom_fields). Returns the new bug id; the raw Bugzilla error is surfaced when
+  an instance mandates extra fields.
+- `add_attachment` tool: attach a (base64-encoded) file to a bug, with
+  content_type / is_patch / is_private / optional comment. Returns the created
+  attachment id(s).
+
+  Both are tagged `write`, so `--read-only` and
+  `MCP_BUGZILLA_DISABLED_METHODS` gate them like the other mutating tools.
+
 ## [v0.14.0] - 2026-06-08
 
 ### Added

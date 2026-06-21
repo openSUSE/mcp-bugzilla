@@ -322,3 +322,57 @@ class Bugzilla:
         mcp_log.info("[BZ-RES] Bug updated successfully")
         mcp_log.debug(f"[BZ-RES] {data}")
         return data
+
+    async def create_bug(self, fields: dict[str, Any]) -> dict[str, Any]:
+        """Create a new bug from the given field mapping.
+
+        Bugzilla requires at least product, component, summary, version and
+        description; instances may mandate more. The raw Bugzilla error (e.g.
+        a missing required field) is surfaced to the caller.
+        """
+        url = "/bug"
+        mcp_log.info(f"[BZ-REQ] POST {self.api_url}{url} json={fields}")
+
+        try:
+            r = await self.client.post(url, json=fields)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            mcp_log.error(
+                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
+            )
+            raise
+        except httpx.RequestError as e:
+            mcp_log.error(f"[BZ-RES] Network Error: {e}")
+            raise
+
+        data = r.json()
+        mcp_log.info(f"[BZ-RES] Created bug {data.get('id')}")
+        mcp_log.debug(f"[BZ-RES] {data}")
+        return data
+
+    async def add_attachment(
+        self, bug_id: int, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Attach a file to a bug. ``payload['data']`` is base64-encoded."""
+        url = f"/bug/{bug_id}/attachment"
+        # Don't log the (possibly large / binary) base64 blob.
+        mcp_log.info(
+            f"[BZ-REQ] POST {self.api_url}{url} file_name={payload.get('file_name')!r}"
+        )
+
+        try:
+            r = await self.client.post(url, json=payload)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            mcp_log.error(
+                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
+            )
+            raise
+        except httpx.RequestError as e:
+            mcp_log.error(f"[BZ-RES] Network Error: {e}")
+            raise
+
+        data = r.json()
+        mcp_log.info(f"[BZ-RES] Attachment(s) {data.get('ids')} added to bug {bug_id}")
+        mcp_log.debug(f"[BZ-RES] {data}")
+        return data

@@ -520,6 +520,130 @@ async def mark_as_duplicate(
         raise ToolError(f"Failed to mark as duplicate\n{e}")
 
 
+@mcp.tool(
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": True,
+    },
+    tags={"write"},
+)
+async def create_bug(
+    product: str,
+    component: str,
+    summary: str,
+    version: str,
+    description: str,
+    op_sys: str = "All",
+    platform: str = "All",
+    priority: Optional[str] = None,
+    severity: Optional[str] = None,
+    cc: Optional[list[str]] = None,
+    custom_fields: Optional[dict[str, Any]] = None,
+    bz: Bugzilla = Depends(get_bz),
+) -> dict[str, Any]:
+    """Create a new bug. Returns the new bug id on success.
+
+    Required fields: product, component, summary, version, description. Some
+    Bugzilla instances mandate additional fields; the raw Bugzilla error is
+    surfaced when that happens (inspect it and retry with the missing field).
+
+    Args:
+        product: Product the bug is filed against
+        component: Component within the product
+        summary: One-line bug summary
+        version: Affected product version (e.g. "unspecified")
+        description: Initial bug description (the first comment)
+        op_sys: Operating system (default "All")
+        platform: Hardware platform (default "All")
+        priority: Optional priority (e.g. P1..P5 / high..low, instance-specific)
+        severity: Optional severity (e.g. critical, normal, minor)
+        cc: Optional list of email addresses to CC
+        custom_fields: Optional dict of extra/custom fields, e.g. {"cf_foo": "bar"}
+    """
+    mcp_log.info(
+        f"[LLM-REQ] create_bug(product={product!r}, component={component!r}, "
+        f"summary={summary!r}, version={version!r})"
+    )
+
+    fields: dict[str, Any] = {
+        "product": product,
+        "component": component,
+        "summary": summary,
+        "version": version,
+        "description": description,
+        "op_sys": op_sys,
+        "platform": platform,
+    }
+    if priority:
+        fields["priority"] = priority
+    if severity:
+        fields["severity"] = severity
+    if cc:
+        fields["cc"] = cc
+    if custom_fields:
+        fields.update(custom_fields)
+
+    try:
+        return await bz.create_bug(fields)
+    except Exception as e:
+        raise ToolError(f"Failed to create bug\n{e}")
+
+
+@mcp.tool(
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": True,
+    },
+    tags={"write"},
+)
+async def add_attachment(
+    bug_id: int,
+    file_name: str,
+    summary: str,
+    data: str,
+    content_type: str = "text/plain",
+    is_patch: bool = False,
+    is_private: bool = False,
+    comment: str = "",
+    bz: Bugzilla = Depends(get_bz),
+) -> dict[str, Any]:
+    """Attach a file to a bug. Returns the created attachment id(s).
+
+    Args:
+        bug_id: Bug to attach the file to
+        file_name: File name shown in Bugzilla
+        summary: Short description of the attachment
+        data: The attachment content, **base64-encoded** (binary-safe)
+        content_type: MIME type (ignored by Bugzilla when is_patch=True)
+        is_patch: Mark the attachment as a patch
+        is_private: Restrict the attachment to the insider group
+        comment: Optional comment to add alongside the attachment
+    """
+    mcp_log.info(
+        f"[LLM-REQ] add_attachment(bug_id={bug_id}, file_name={file_name!r}, "
+        f"is_patch={is_patch}, is_private={is_private})"
+    )
+
+    payload: dict[str, Any] = {
+        "ids": [bug_id],
+        "file_name": file_name,
+        "summary": summary,
+        "data": data,
+        "content_type": content_type,
+        "is_patch": is_patch,
+        "is_private": is_private,
+    }
+    if comment:
+        payload["comment"] = comment
+
+    try:
+        return await bz.add_attachment(bug_id, payload)
+    except Exception as e:
+        raise ToolError(f"Failed to add attachment\n{e}")
+
+
 def disable_components_selectively():
     """
     Disables MCP components based on environment variables.

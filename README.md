@@ -106,6 +106,31 @@ The server provides the following tools for interacting with Bugzilla:
   + **Returns**: A dictionary containing the updated bug fields including status `CLOSED`, resolution `DUPLICATE`, and `dupe_of` reference
   + **Example**: `mark_as_duplicate(12345, 789012, comment="Same root cause as the original report")`
 
+* **`create_bug(product, component, summary, version, description, op_sys="All", platform="All", priority=None, severity=None, cc=None, custom_fields=None)`**: Files a new bug.
+
+  + **Parameters**:
+    - `product`, `component`, `summary`, `version`, `description`: Required core fields
+    - `op_sys`, `platform`: Default to `All`
+    - `priority`, `severity`: Optional, instance-specific values
+    - `cc`: Optional list of email addresses to CC
+    - `custom_fields`: Optional dict of extra/custom fields (e.g. `{"cf_fixed_in": "1.2.3"}`)
+  + **Returns**: A dictionary with the new bug `id`. If the Bugzilla instance mandates additional fields, its error message is surfaced so you can retry with them.
+  + **Example**: `create_bug("MyProduct", "general", "App crashes on launch", "unspecified", "Steps to reproduce: ...")`
+
+* **`add_attachment(bug_id, file_name, summary, data, content_type="text/plain", is_patch=False, is_private=False, comment="")`**: Attaches a file to a bug.
+
+  + **Parameters**:
+    - `bug_id`: The bug to attach to
+    - `file_name`: File name shown in Bugzilla
+    - `summary`: Short description of the attachment
+    - `data`: The attachment content, **base64-encoded**
+    - `content_type`: MIME type (ignored when `is_patch=True`)
+    - `is_patch`: Mark the attachment as a patch
+    - `is_private`: Restrict to the insider group
+    - `comment`: Optional comment added alongside the attachment
+  + **Returns**: A dictionary with the created attachment `ids`
+  + **Example**: `add_attachment(12345, "crash.log", "Crash log", "aGVsbG8=", content_type="text/plain")`
+
 #### Bug Search
 
 - **`bugs_quicksearch(query: str, status: str = "ALL", include_fields: str = "...", limit: int = 50, offset: int = 0)`**: Executes a search for bugs using Bugzilla's powerful [quicksearch syntax](https://bugzilla.readthedocs.io/en/latest/using/finding.html#quicksearch).
