@@ -48,6 +48,7 @@ Tests use `respx` to mock HTTP calls and `pytest-asyncio` for async test support
 3. Use `make_bugzilla_request()` from `mcp_utils.py` for authenticated Bugzilla REST API calls.
 4. Raise `ToolError` on Bugzilla API errors.
 5. Add a corresponding test in `tests/test_mcp_utils.py` (or a new test file) using `respx` to mock the HTTP response.
+6. update relevant documentation wherever applicable
 
 ## Disabling Tools at Runtime
 
@@ -85,9 +86,11 @@ docker run -p 8000:8000 \
 
 ## Publishing a New Release
 
-1. create a new git branch 
-2. Bump `version` in `pyproject.toml` using `uv version --bump` based on `git diff` since previous tag 
-3. Add entry to `CHANGELOG.md` listing the changes.
+1. run `uv sync` & Bump project version with `uv version --bump` . Guess the version bump based on commit activity since previous git tag.
+2. Confirm with user before bumping the version
+3. create a new branch for release
+4. Add entry to `CHANGELOG.md` listing the changes using `git diff` since latest previous tags per the existing CHANGELOG format
+
 
 ## Key Dependencies
 
