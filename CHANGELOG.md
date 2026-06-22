@@ -18,6 +18,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   Both are tagged `write`, so `--read-only` and
   `MCP_BUGZILLA_DISABLED_METHODS` gate them like the other mutating tools.
 
+### Chore
+- Bump cryptography from 46.0.7 to 48.0.1
+- Bump starlette from 1.0.1 to 1.3.1
+- Bump python-multipart from 0.0.27 to 0.0.31
+- Bump pyjwt from 2.12.0 to 2.13.0
+- Bump pytest from 9.0.3 to 9.1.0
+
 ## [v0.14.0] - 2026-06-08
 
 ### Added
