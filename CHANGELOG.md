@@ -23,7 +23,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Bump starlette from 1.0.1 to 1.3.1
 - Bump python-multipart from 0.0.27 to 0.0.31
 - Bump pyjwt from 2.12.0 to 2.13.0
+- Bump pydantic-settings from 2.12.0 to 2.14.2
 - Bump pytest from 9.0.3 to 9.1.0
+
+### Changed
+- Update `AGENTS.md` with project development guidelines
 
 ## [v0.14.0] - 2026-06-08
 
