@@ -89,7 +89,7 @@ docker run -p 8000:8000 \
 1. run `uv sync` & Bump project version with `uv version --bump` . Guess the version bump based on commit activity since previous git tag.
 2. Confirm with user before bumping the version
 3. create a new branch for release
-4. Add entry to `CHANGELOG.md` listing the changes using `git diff` since latest previous tags per the existing CHANGELOG format
+4. Add entry to `CHANGELOG.md` listing the changes using `git diff` since latest previous tags as per the existing CHANGELOG format
 
 
 ## Key Dependencies
