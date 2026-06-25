@@ -376,3 +376,53 @@ class Bugzilla:
         mcp_log.info(f"[BZ-RES] Attachment(s) {data.get('ids')} added to bug {bug_id}")
         mcp_log.debug(f"[BZ-RES] {data}")
         return data
+
+    async def list_attachments(self, bug_id: int) -> list[dict[str, Any]]:
+        """List a bug's attachments (metadata only, base64 ``data`` excluded)."""
+        url = f"/bug/{bug_id}/attachment"
+        mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} exclude_fields=data")
+
+        try:
+            r = await self.client.get(url, params={"exclude_fields": "data"})
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            mcp_log.error(
+                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
+            )
+            raise
+        except httpx.RequestError as e:
+            mcp_log.error(f"[BZ-RES] Network Error: {e}")
+            raise
+
+        # /bug/{id}/attachment returns {"bugs": {"<bug_id>": [ {att}, ... ]}}
+        attachments = r.json().get("bugs", {}).get(str(bug_id), [])
+        mcp_log.info(f"[BZ-RES] Bug {bug_id} has {len(attachments)} attachment(s)")
+        return attachments
+
+    async def get_attachment(self, attachment_id: int) -> dict[str, Any]:
+        """Fetch a single attachment, including its base64-encoded ``data``."""
+        url = f"/bug/attachment/{attachment_id}"
+        # Don't log the (possibly large / binary) base64 blob in the response.
+        mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url}")
+
+        try:
+            r = await self.client.get(url)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            mcp_log.error(
+                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
+            )
+            raise
+        except httpx.RequestError as e:
+            mcp_log.error(f"[BZ-RES] Network Error: {e}")
+            raise
+
+        # /bug/attachment/{id} returns {"attachments": {"<attachment_id>": {att}}}
+        attachment = r.json().get("attachments", {}).get(str(attachment_id))
+        if attachment is None:
+            raise ValueError(f"Attachment {attachment_id} not found")
+        mcp_log.info(
+            f"[BZ-RES] Attachment {attachment_id} "
+            f"file_name={attachment.get('file_name')!r} size={attachment.get('size')}"
+        )
+        return attachment

@@ -56,6 +56,21 @@ The server provides the following tools for interacting with Bugzilla:
   - **Returns**: A dictionary containing the ID of the newly created comment
   - **Example**: `add_comment(12345, "Fixed in version 2.0", is_private=False)`
 
+#### Attachments
+
+- **`list_attachments(bug_id: int)`**: Lists a bug's attachments as metadata only (the base64 file contents are excluded to keep responses small).
+  - **Parameters**:
+    - `bug_id`: The bug whose attachments to list
+  - **Returns**: A list of attachment metadata objects (`id`, `file_name`, `summary`, `content_type`, `size`, `is_private`, `is_obsolete`, `is_patch`, `creation_time`, ...). Use an `id` with `download_attachment` to fetch the file.
+  - **Example**: `list_attachments(989633)`
+
+- **`download_attachment(attachment_id: int, output_dir: Optional[str] = None)`**: Downloads a single attachment by id. Textual attachments (logs, patches, plain/xml/json, ...) up to 256 KiB are returned inline as decoded `content`; binary attachments, or larger text, are written to disk and the absolute `path` is returned instead.
+  - **Parameters**:
+    - `attachment_id`: The attachment id to download (discover via `list_attachments`)
+    - `output_dir`: Optional directory to save the file in when it isn't returned inline. Defaults to the server's configured download directory (`--download-dir` / `BUGZILLA_DOWNLOAD_DIR`).
+  - **Returns**: Inline: `{"mode": "text", "content": <decoded text>, ...metadata}`. On disk: `{"mode": "saved", "path": <absolute path>, ...metadata}`.
+  - **Example**: `download_attachment(685495)`
+
 #### Write Operations
 
 **Note**: Write operations require appropriate Bugzilla permissions. These tools enable bug management and workflow automation.
@@ -233,6 +248,7 @@ The `mcp-bugzilla` command supports the following options:
 | `--api-key-header <HEADER_NAME>` | `MCP_API_KEY_HEADER` | `ApiKey` | HTTP header name for the Bugzilla API key (http transport only) |
 | `--use-auth-header` | `USE_AUTH_HEADER` | `False` | Use `Authorization: Bearer` header instead of `api_key` query parameter |
 | `--read-only` | `MCP_READ_ONLY` | `False` | Disables all tools which can modify a bug. Works well in conjunction with `MCP_BUGZILLA_DISABLED_METHODS` |
+| `--download-dir <DIR>` | `BUGZILLA_DOWNLOAD_DIR` | `<tmpdir>/mcp-bugzilla` | Directory where `download_attachment` writes binary/oversized attachments. The directory is created on first use |
 
 **Note**: `--host` and `--port` are rejected with an error when used together with `--transport stdio`.
 

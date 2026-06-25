@@ -64,6 +64,14 @@ def main():
         default=os.getenv("BUGZILLA_API_KEY"),
         help="Bugzilla API key. Required for --transport stdio (no HTTP headers exist there). Environment variable BUGZILLA_API_KEY can also be used. Ignored for --transport http (clients send the key per-request via the API key header).",
     )
+    parser.add_argument(
+        "--download-dir",
+        type=str,
+        default=os.getenv("BUGZILLA_DOWNLOAD_DIR"),
+        help="Directory where download_attachment writes binary/oversized attachments. "
+        "Defaults to <tmpdir>/mcp-bugzilla or the BUGZILLA_DOWNLOAD_DIR environment variable.",
+    )
+
     args = parser.parse_args()
 
     # The default behavior of argparse with os.getenv already handles the priority:

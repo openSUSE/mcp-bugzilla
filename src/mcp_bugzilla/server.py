@@ -6,7 +6,11 @@ Author: Sai Karthik <kskarthik@disroot.org>
 License: Apache 2.0
 """
 
+import base64
 import importlib.metadata
+import os
+import re
+import tempfile
 from argparse import Namespace
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -29,6 +33,14 @@ base_url: str = ""
 
 # Global variable for read-only mode
 read_only: bool = False
+
+# Directory where binary / oversized attachments are written by download_attachment,
+# set by the start() function from --download-dir / BUGZILLA_DOWNLOAD_DIR.
+download_dir: str = ""
+
+# Attachments whose decoded text is at or below this size are returned inline;
+# anything larger (or any binary attachment) is written to disk instead.
+MAX_INLINE_BYTES: int = 256 * 1024
 
 
 @asynccontextmanager
@@ -644,6 +656,134 @@ async def add_attachment(
         raise ToolError(f"Failed to add attachment\n{e}")
 
 
+# Content types whose payload is textual and safe to return inline as decoded text.
+_TEXTUAL_CONTENT_TYPES = {
+    "application/json",
+    "application/xml",
+    "application/x-sh",
+    "application/javascript",
+    "application/x-yaml",
+    "image/svg+xml",
+}
+
+
+def _is_textual(content_type: str) -> bool:
+    """Whether an attachment's content can be returned inline as decoded text."""
+    ct = (content_type or "").split(";", 1)[0].strip().lower()
+    if ct.startswith("text/"):
+        return True
+    if ct in _TEXTUAL_CONTENT_TYPES:
+        return True
+    if ct.endswith(("+xml", "+json")):
+        return True
+    return "patch" in ct or "diff" in ct
+
+
+def _safe_filename(name: Optional[str], attachment_id: int) -> str:
+    """Sanitize a Bugzilla-supplied file name for safe use as a path component.
+
+    Strips any directory part and collapses anything outside ``[A-Za-z0-9._-]``
+    to ``_`` so a hostile ``file_name`` (e.g. ``../../etc/passwd``) cannot escape
+    the target directory.
+    """
+    base = os.path.basename(name or "").strip()
+    base = re.sub(r"[^A-Za-z0-9._-]", "_", base).strip("._")
+    return base or f"attachment-{attachment_id}"
+
+
+@mcp.tool(
+    annotations={"readOnlyHint": True, "openWorldHint": True},
+    tags={"read"},
+)
+async def list_attachments(
+    bug_id: int, bz: Bugzilla = Depends(get_bz)
+) -> list[dict[str, Any]]:
+    """List a bug's attachments (metadata only, without the file contents).
+
+    Use this to discover attachment ids, then pass an id to ``download_attachment``
+    to fetch the actual file. The base64 ``data`` field is intentionally omitted
+    here to keep responses small.
+
+    Args:
+        bug_id: The bug whose attachments to list.
+
+    Returns:
+        A list of attachment metadata objects (id, file_name, summary,
+        content_type, size, is_private, is_obsolete, is_patch, creation_time, ...).
+    """
+    mcp_log.info(f"[LLM-REQ] list_attachments(bug_id={bug_id})")
+    try:
+        return await bz.list_attachments(bug_id)
+    except Exception as e:
+        raise ToolError(f"Failed to list attachments\nReason: {e}")
+
+
+@mcp.tool(
+    annotations={"readOnlyHint": True, "openWorldHint": True},
+    tags={"read"},
+)
+async def download_attachment(
+    attachment_id: int,
+    output_dir: Optional[str] = None,
+    bz: Bugzilla = Depends(get_bz),
+) -> dict[str, Any]:
+    """Download a single attachment by id.
+
+    Textual attachments (logs, patches, plain/xml/json, ...) up to 256 KiB are
+    returned inline as decoded ``content``. Binary attachments, or text larger than
+    that, are written to disk and the absolute ``path`` is returned instead (keeping
+    large/binary blobs out of the conversation). Discover ids with ``list_attachments``.
+
+    Args:
+        attachment_id: The attachment id to download.
+        output_dir: Directory to save the file in when it isn't returned inline.
+            Defaults to the server's configured download directory
+            (--download-dir / BUGZILLA_DOWNLOAD_DIR).
+
+    Returns:
+        On inline delivery: ``{"mode": "text", "content": <decoded text>, ...metadata}``.
+        On disk delivery: ``{"mode": "saved", "path": <abspath>, ...metadata}``.
+    """
+    mcp_log.info(f"[LLM-REQ] download_attachment(attachment_id={attachment_id})")
+    try:
+        att = await bz.get_attachment(attachment_id)
+        raw = base64.b64decode(att.get("data") or "")
+
+        content_type = att.get("content_type", "")
+        meta = {
+            "attachment_id": attachment_id,
+            "file_name": att.get("file_name"),
+            "content_type": content_type,
+            "size": len(raw),
+            "is_private": att.get("is_private"),
+            "is_obsolete": att.get("is_obsolete"),
+        }
+
+        if (_is_textual(content_type) or att.get("is_patch")) and len(
+            raw
+        ) <= MAX_INLINE_BYTES:
+            mcp_log.info(f"[LLM-RES] attachment {attachment_id} returned inline as text")
+            return {
+                "mode": "text",
+                "content": raw.decode("utf-8", errors="replace"),
+                **meta,
+            }
+
+        target = output_dir or download_dir
+        os.makedirs(target, exist_ok=True)
+        path = os.path.join(
+            target, f"{attachment_id}-{_safe_filename(att.get('file_name'), attachment_id)}"
+        )
+        with open(path, "wb") as f:
+            f.write(raw)
+
+        abspath = os.path.abspath(path)
+        mcp_log.info(f"[LLM-RES] attachment {attachment_id} saved to {abspath}")
+        return {"mode": "saved", "path": abspath, **meta}
+    except Exception as e:
+        raise ToolError(f"Failed to download attachment {attachment_id}\nReason: {e}")
+
+
 def disable_components_selectively():
     """
     Disables MCP components based on environment variables.
@@ -683,9 +823,12 @@ def start():
     """
     Starts the FastMCP server for Bugzilla.
     """
-    global base_url, read_only
+    global base_url, read_only, download_dir
     base_url = cli_args.bugzilla_server
     read_only = getattr(cli_args, "read_only", False)
+    download_dir = getattr(cli_args, "download_dir", None) or os.path.join(
+        tempfile.gettempdir(), "mcp-bugzilla"
+    )
     # Ensure base_url doesn't have trailing slash for consistency
     if base_url.endswith("/"):
         base_url = base_url[:-1]

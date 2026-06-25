@@ -242,6 +242,83 @@ async def test_add_attachment(bz_client):
 
 
 @pytest.mark.asyncio
+async def test_list_attachments(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/bug/123/attachment").mock(
+            return_value=Response(
+                200,
+                json={
+                    "bugs": {
+                        "123": [
+                            {
+                                "id": 42,
+                                "file_name": "log.txt",
+                                "content_type": "text/plain",
+                                "size": 5,
+                            },
+                            {
+                                "id": 43,
+                                "file_name": "patch.diff",
+                                "content_type": "text/x-patch",
+                                "size": 10,
+                            },
+                        ]
+                    },
+                    "attachments": {},
+                },
+            )
+        )
+
+        attachments = await bz_client.list_attachments(123)
+
+        assert [a["id"] for a in attachments] == [42, 43]
+        assert all("data" not in a for a in attachments)
+        assert route.called
+        # exclude_fields=data must be sent (alongside the client's api_key param)
+        assert route.calls.last.request.url.params["exclude_fields"] == "data"
+        assert route.calls.last.request.url.params["api_key"] == MOCK_API_KEY
+
+
+@pytest.mark.asyncio
+async def test_get_attachment(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/bug/attachment/42").mock(
+            return_value=Response(
+                200,
+                json={
+                    "attachments": {
+                        "42": {
+                            "id": 42,
+                            "file_name": "log.txt",
+                            "content_type": "text/plain",
+                            "size": 5,
+                            "data": "aGVsbG8=",  # base64("hello")
+                        }
+                    },
+                    "bugs": {},
+                },
+            )
+        )
+
+        att = await bz_client.get_attachment(42)
+
+        assert att["id"] == 42
+        assert att["data"] == "aGVsbG8="
+        assert route.called
+
+
+@pytest.mark.asyncio
+async def test_get_attachment_missing_raises(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/bug/attachment/999").mock(
+            return_value=Response(200, json={"attachments": {}, "bugs": {}})
+        )
+
+        with pytest.raises(ValueError, match="999 not found"):
+            await bz_client.get_attachment(999)
+
+
+@pytest.mark.asyncio
 async def test_quicksearch(bz_client):
     async with respx.mock(base_url=MOCK_URL) as respx_mock:
         route = respx_mock.get("/rest/bug").mock(
