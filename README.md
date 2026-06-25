@@ -64,12 +64,16 @@ The server provides the following tools for interacting with Bugzilla:
   - **Returns**: A list of attachment metadata objects (`id`, `file_name`, `summary`, `content_type`, `size`, `is_private`, `is_obsolete`, `is_patch`, `creation_time`, ...). Use an `id` with `download_attachment` to fetch the file.
   - **Example**: `list_attachments(989633)`
 
-- **`download_attachment(attachment_id: int, output_dir: Optional[str] = None)`**: Downloads a single attachment by id. Textual attachments (logs, patches, plain/xml/json, ...) up to 256 KiB are returned inline as decoded `content`; binary attachments, or larger text, are written to disk and the absolute `path` is returned instead.
+- **`download_attachment(attachment_id: int, output_dir: Optional[str] = None, delivery: "auto" | "inline" | "save" = "auto")`**: Downloads a single attachment by id. The `delivery` argument lets the caller choose how the content is returned.
   - **Parameters**:
     - `attachment_id`: The attachment id to download (discover via `list_attachments`)
-    - `output_dir`: Optional directory to save the file in when it isn't returned inline. Defaults to the server's configured download directory (`--download-dir` / `BUGZILLA_DOWNLOAD_DIR`).
-  - **Returns**: Inline: `{"mode": "text", "content": <decoded text>, ...metadata}`. On disk: `{"mode": "saved", "path": <absolute path>, ...metadata}`.
-  - **Example**: `download_attachment(685495)`
+    - `output_dir`: Optional directory to save the file in when it is written to disk. Defaults to the server's configured download directory (`--download-dir` / `BUGZILLA_DOWNLOAD_DIR`).
+    - `delivery`:
+      - `auto` (default): textual attachments (logs, patches, plain/xml/json, ...) up to 256 KiB are returned inline as decoded `content`; binary attachments, or larger text, are written to disk.
+      - `inline`: always return the content in the response — decoded `content` for text, or base64 `data_base64` for binary. Refused above 5 MiB.
+      - `save`: always write the file to disk and return its `path`.
+  - **Returns**: Text inline: `{"mode": "text", "content": <decoded text>, ...metadata}`. Binary inline: `{"mode": "base64", "data_base64": <base64>, ...metadata}`. On disk: `{"mode": "saved", "path": <absolute path>, ...metadata}`.
+  - **Example**: `download_attachment(685495)` · `download_attachment(685495, delivery="save")`
 
 #### Write Operations
 

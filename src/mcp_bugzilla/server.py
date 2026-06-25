@@ -14,7 +14,7 @@ import tempfile
 from argparse import Namespace
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
@@ -38,9 +38,13 @@ read_only: bool = False
 # set by the start() function from --download-dir / BUGZILLA_DOWNLOAD_DIR.
 download_dir: str = ""
 
-# Attachments whose decoded text is at or below this size are returned inline;
-# anything larger (or any binary attachment) is written to disk instead.
+# In "auto" delivery, attachments whose decoded text is at or below this size are
+# returned inline; anything larger (or any binary attachment) is written to disk.
 MAX_INLINE_BYTES: int = 256 * 1024
+
+# Hard ceiling for delivery="inline": refuse to force anything larger into the
+# response (it would flood the conversation); the caller should save it instead.
+MAX_FORCED_INLINE_BYTES: int = 5 * 1024 * 1024
 
 
 @asynccontextmanager
@@ -725,31 +729,42 @@ async def list_attachments(
 async def download_attachment(
     attachment_id: int,
     output_dir: Optional[str] = None,
+    delivery: Literal["auto", "inline", "save"] = "auto",
     bz: Bugzilla = Depends(get_bz),
 ) -> dict[str, Any]:
-    """Download a single attachment by id.
+    """Download a single attachment by id. Discover ids with ``list_attachments``.
 
-    Textual attachments (logs, patches, plain/xml/json, ...) up to 256 KiB are
-    returned inline as decoded ``content``. Binary attachments, or text larger than
-    that, are written to disk and the absolute ``path`` is returned instead (keeping
-    large/binary blobs out of the conversation). Discover ids with ``list_attachments``.
+    The ``delivery`` argument controls how the content is returned:
+
+    - ``"auto"`` (default): textual attachments (logs, patches, plain/xml/json, ...)
+      up to 256 KiB are returned inline as decoded ``content``; binary attachments,
+      or larger text, are written to disk and the absolute ``path`` is returned.
+    - ``"inline"``: always return the content in the response — decoded ``content``
+      for text, or base64 ``data_base64`` for binary. Refused above 5 MiB.
+    - ``"save"``: always write the file to disk and return its ``path``.
 
     Args:
         attachment_id: The attachment id to download.
-        output_dir: Directory to save the file in when it isn't returned inline.
+        output_dir: Directory to save the file in when it is written to disk.
             Defaults to the server's configured download directory
             (--download-dir / BUGZILLA_DOWNLOAD_DIR).
+        delivery: One of "auto", "inline", "save" (see above).
 
     Returns:
-        On inline delivery: ``{"mode": "text", "content": <decoded text>, ...metadata}``.
-        On disk delivery: ``{"mode": "saved", "path": <abspath>, ...metadata}``.
+        Text inline: ``{"mode": "text", "content": <decoded text>, ...metadata}``.
+        Binary inline: ``{"mode": "base64", "data_base64": <base64>, ...metadata}``.
+        Saved to disk: ``{"mode": "saved", "path": <abspath>, ...metadata}``.
     """
-    mcp_log.info(f"[LLM-REQ] download_attachment(attachment_id={attachment_id})")
+    mcp_log.info(
+        f"[LLM-REQ] download_attachment(attachment_id={attachment_id}, delivery={delivery!r})"
+    )
     try:
         att = await bz.get_attachment(attachment_id)
-        raw = base64.b64decode(att.get("data") or "")
+        b64 = att.get("data") or ""
+        raw = base64.b64decode(b64)
 
         content_type = att.get("content_type", "")
+        is_text = bool(_is_textual(content_type) or att.get("is_patch"))
         meta = {
             "attachment_id": attachment_id,
             "file_name": att.get("file_name"),
@@ -759,27 +774,42 @@ async def download_attachment(
             "is_obsolete": att.get("is_obsolete"),
         }
 
-        if (_is_textual(content_type) or att.get("is_patch")) and len(
-            raw
-        ) <= MAX_INLINE_BYTES:
-            mcp_log.info(f"[LLM-RES] attachment {attachment_id} returned inline as text")
-            return {
-                "mode": "text",
-                "content": raw.decode("utf-8", errors="replace"),
-                **meta,
-            }
+        def _save() -> dict[str, Any]:
+            target = output_dir or download_dir
+            os.makedirs(target, exist_ok=True)
+            path = os.path.join(
+                target,
+                f"{attachment_id}-{_safe_filename(att.get('file_name'), attachment_id)}",
+            )
+            with open(path, "wb") as f:
+                f.write(raw)
+            abspath = os.path.abspath(path)
+            mcp_log.info(f"[LLM-RES] attachment {attachment_id} saved to {abspath}")
+            return {"mode": "saved", "path": abspath, **meta}
 
-        target = output_dir or download_dir
-        os.makedirs(target, exist_ok=True)
-        path = os.path.join(
-            target, f"{attachment_id}-{_safe_filename(att.get('file_name'), attachment_id)}"
-        )
-        with open(path, "wb") as f:
-            f.write(raw)
+        def _inline() -> dict[str, Any]:
+            if len(raw) > MAX_FORCED_INLINE_BYTES:
+                raise ToolError(
+                    f"Attachment {attachment_id} is {len(raw)} bytes, too large to "
+                    f"return inline (limit {MAX_FORCED_INLINE_BYTES}). "
+                    "Use delivery='save' or delivery='auto'."
+                )
+            if is_text:
+                mcp_log.info(f"[LLM-RES] attachment {attachment_id} returned inline as text")
+                return {"mode": "text", "content": raw.decode("utf-8", errors="replace"), **meta}
+            mcp_log.info(f"[LLM-RES] attachment {attachment_id} returned inline as base64")
+            return {"mode": "base64", "data_base64": b64, **meta}
 
-        abspath = os.path.abspath(path)
-        mcp_log.info(f"[LLM-RES] attachment {attachment_id} saved to {abspath}")
-        return {"mode": "saved", "path": abspath, **meta}
+        if delivery == "save":
+            return _save()
+        if delivery == "inline":
+            return _inline()
+        # auto
+        if is_text and len(raw) <= MAX_INLINE_BYTES:
+            return _inline()
+        return _save()
+    except ToolError:
+        raise
     except Exception as e:
         raise ToolError(f"Failed to download attachment {attachment_id}\nReason: {e}")
 
