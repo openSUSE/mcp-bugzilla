@@ -70,7 +70,7 @@ The server provides the following tools for interacting with Bugzilla:
     - `output_dir`: Optional directory to save the file in when it is written to disk. Defaults to the server's configured download directory (`--download-dir` / `BUGZILLA_DOWNLOAD_DIR`).
     - `delivery`:
       - `auto` (default): textual attachments (logs, patches, plain/xml/json, ...) up to 256 KiB are returned inline as decoded `content`; binary attachments, or larger text, are written to disk.
-      - `inline`: always return the content in the response — decoded `content` for text, or base64 `data_base64` for binary. Refused above 5 MiB.
+      - `inline`: always return the content in the response — decoded `content` for text, or base64 `data_base64` for binary. Refused above 1 MiB.
       - `save`: always write the file to disk and return its `path`.
   - **Returns**: Text inline: `{"mode": "text", "content": <decoded text>, ...metadata}`. Binary inline: `{"mode": "base64", "data_base64": <base64>, ...metadata}`. On disk: `{"mode": "saved", "path": <absolute path>, ...metadata}`.
   - **Example**: `download_attachment(685495)` · `download_attachment(685495, delivery="save")`
