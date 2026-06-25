@@ -44,7 +44,7 @@ MAX_INLINE_BYTES: int = 256 * 1024
 
 # Hard ceiling for delivery="inline": refuse to force anything larger into the
 # response (it would flood the conversation); the caller should save it instead.
-MAX_FORCED_INLINE_BYTES: int = 5 * 1024 * 1024
+MAX_FORCED_INLINE_BYTES: int = 1024 * 1024
 
 
 @asynccontextmanager
@@ -740,7 +740,7 @@ async def download_attachment(
       up to 256 KiB are returned inline as decoded ``content``; binary attachments,
       or larger text, are written to disk and the absolute ``path`` is returned.
     - ``"inline"``: always return the content in the response — decoded ``content``
-      for text, or base64 ``data_base64`` for binary. Refused above 5 MiB.
+      for text, or base64 ``data_base64`` for binary. Refused above 1 MiB.
     - ``"save"``: always write the file to disk and return its ``path``.
 
     Args:
