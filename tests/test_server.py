@@ -3,6 +3,7 @@ import os
 from unittest.mock import AsyncMock
 
 import pytest
+from fastmcp.exceptions import ToolError
 
 from mcp_bugzilla import server
 
@@ -117,6 +118,63 @@ async def test_download_attachment_explicit_output_dir(tmp_path):
 
     assert os.path.dirname(result["path"]) == str(out)
     assert os.path.isfile(result["path"])
+
+
+@pytest.mark.asyncio
+async def test_download_attachment_delivery_save_forces_disk(tmp_path):
+    server.download_dir = str(tmp_path)
+    att = {
+        "id": 11,
+        "file_name": "note.txt",
+        "content_type": "text/plain",  # would be inline under "auto"
+        "data": base64.b64encode(b"hi").decode(),
+    }
+
+    result = await server.download_attachment(
+        attachment_id=11, delivery="save", bz=_fake_bz(att)
+    )
+
+    assert result["mode"] == "saved"
+    assert os.path.isfile(result["path"])
+
+
+@pytest.mark.asyncio
+async def test_download_attachment_delivery_inline_binary_base64(tmp_path):
+    server.download_dir = str(tmp_path)
+    blob = b"\x00\x01\x02\x03"
+    b64 = base64.b64encode(blob).decode()
+    att = {
+        "id": 12,
+        "file_name": "blob.bin",
+        "content_type": "application/octet-stream",  # would be saved under "auto"
+        "data": b64,
+    }
+
+    result = await server.download_attachment(
+        attachment_id=12, delivery="inline", bz=_fake_bz(att)
+    )
+
+    assert result["mode"] == "base64"
+    assert result["data_base64"] == b64
+    assert base64.b64decode(result["data_base64"]) == blob
+    assert os.listdir(tmp_path) == []  # nothing written
+
+
+@pytest.mark.asyncio
+async def test_download_attachment_delivery_inline_too_large_raises(tmp_path):
+    server.download_dir = str(tmp_path)
+    big = b"x" * (server.MAX_FORCED_INLINE_BYTES + 1)
+    att = {
+        "id": 13,
+        "file_name": "huge.bin",
+        "content_type": "application/octet-stream",
+        "data": base64.b64encode(big).decode(),
+    }
+
+    with pytest.raises(ToolError, match="too large to return inline"):
+        await server.download_attachment(
+            attachment_id=13, delivery="inline", bz=_fake_bz(att)
+        )
 
 
 @pytest.mark.asyncio
