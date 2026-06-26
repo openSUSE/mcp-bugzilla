@@ -196,6 +196,28 @@ async def test_download_attachment_missing_data_raises(tmp_path, data):
 
 
 @pytest.mark.asyncio
+async def test_download_attachment_text_invalid_utf8_falls_back_to_base64(tmp_path):
+    server.download_dir = str(tmp_path)
+    # Latin-1 bytes mislabeled as text/plain; 0xff is not valid UTF-8.
+    blob = b"caf\xe9 \xff\xfe"
+    att = {
+        "id": 55,
+        "file_name": "mislabeled.txt",
+        "content_type": "text/plain",
+        "data": base64.b64encode(blob).decode(),
+    }
+
+    result = await server.download_attachment(
+        attachment_id=55, delivery="inline", bz=_fake_bz(att)
+    )
+
+    # Strict decode fails, so we must return base64 rather than corrupted text.
+    assert result["mode"] == "base64"
+    assert base64.b64decode(result["data_base64"]) == blob
+    assert "content" not in result
+
+
+@pytest.mark.asyncio
 async def test_list_attachments_tool_passthrough():
     bz = AsyncMock()
     bz.list_attachments = AsyncMock(

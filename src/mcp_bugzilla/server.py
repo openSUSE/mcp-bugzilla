@@ -704,7 +704,8 @@ async def download_attachment(
       up to 256 KiB are returned inline as decoded ``content``; binary attachments,
       or larger text, are written to disk and the absolute ``path`` is returned.
     - ``"inline"``: always return the content in the response — decoded ``content``
-      for text, or base64 ``data_base64`` for binary. Refused above 1 MiB.
+      for text, or base64 ``data_base64`` for binary (and for text whose bytes are
+      not valid UTF-8). Refused above 1 MiB.
     - ``"save"``: always write the file to disk and return its ``path``.
 
     Args:
@@ -764,14 +765,22 @@ async def download_attachment(
                     "Use delivery='save' or delivery='auto'."
                 )
             if is_text:
+                # A textual content_type (or is_patch flag) is only a hint; the
+                # bytes may not actually be valid UTF-8. Decode strictly and fall
+                # back to base64 rather than silently returning U+FFFD-corrupted
+                # text marked as a successful "text" result.
+                try:
+                    content = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    mcp_log.info(
+                        f"[LLM-RES] attachment {attachment_id} is not valid UTF-8, "
+                        "returned inline as base64"
+                    )
+                    return {"mode": "base64", "data_base64": b64, **meta}
                 mcp_log.info(
                     f"[LLM-RES] attachment {attachment_id} returned inline as text"
                 )
-                return {
-                    "mode": "text",
-                    "content": raw.decode("utf-8", errors="replace"),
-                    **meta,
-                }
+                return {"mode": "text", "content": content, **meta}
             mcp_log.info(
                 f"[LLM-RES] attachment {attachment_id} returned inline as base64"
             )
