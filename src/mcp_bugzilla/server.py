@@ -792,10 +792,13 @@ async def download_attachment(
             return _save()
         if delivery == "inline":
             return _inline()
-        # auto
-        if is_text and len(raw) <= MAX_INLINE_BYTES:
-            return _inline()
-        return _save()
+        if delivery == "auto":
+            if is_text and len(raw) <= MAX_INLINE_BYTES:
+                return _inline()
+            return _save()
+        # Unreachable while delivery is constrained by the Literal, but guard
+        # explicitly so a newly-added mode fails loudly instead of falling through.
+        raise ToolError(f"Unknown delivery mode: {delivery!r}")
     except ToolError:
         raise
     except Exception as e:
