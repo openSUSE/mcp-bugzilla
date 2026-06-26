@@ -239,6 +239,43 @@ async def test_download_attachment_unwritable_dir_raises(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_download_attachment_private_refused_by_default(tmp_path):
+    server.download_dir = str(tmp_path)
+    att = {
+        "id": 31,
+        "file_name": "secret.txt",
+        "content_type": "text/plain",
+        "is_private": True,
+        "data": base64.b64encode(b"top secret").decode(),
+    }
+
+    with pytest.raises(ToolError, match="is private"):
+        await server.download_attachment(attachment_id=31, bz=_fake_bz(att))
+
+    assert os.listdir(tmp_path) == []
+
+
+@pytest.mark.asyncio
+async def test_download_attachment_private_allowed_with_flag(tmp_path):
+    server.download_dir = str(tmp_path)
+    att = {
+        "id": 32,
+        "file_name": "secret.txt",
+        "content_type": "text/plain",
+        "is_private": True,
+        "data": base64.b64encode(b"top secret").decode(),
+    }
+
+    result = await server.download_attachment(
+        attachment_id=32, include_private=True, bz=_fake_bz(att)
+    )
+
+    assert result["mode"] == "text"
+    assert result["content"] == "top secret"
+    assert result["is_private"] is True
+
+
+@pytest.mark.asyncio
 async def test_list_attachments_tool_passthrough():
     bz = AsyncMock()
     bz.list_attachments = AsyncMock(
