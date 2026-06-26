@@ -724,7 +724,12 @@ async def download_attachment(
     )
     try:
         att = await bz.get_attachment(attachment_id)
-        b64 = att.get("data") or ""
+        b64 = att.get("data")
+        if not b64:
+            raise ToolError(
+                f"Attachment {attachment_id} has no downloadable data "
+                "(it may be private or restricted for your token)."
+            )
         raw = base64.b64decode(b64)
 
         content_type = att.get("content_type", "")

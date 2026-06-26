@@ -178,6 +178,24 @@ async def test_download_attachment_delivery_inline_too_large_raises(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("data", [None, ""])
+async def test_download_attachment_missing_data_raises(tmp_path, data):
+    server.download_dir = str(tmp_path)
+    att = {
+        "id": 99,
+        "file_name": "secret.txt",
+        "content_type": "text/plain",
+        "data": data,
+    }
+
+    with pytest.raises(ToolError, match="no downloadable data"):
+        await server.download_attachment(attachment_id=99, bz=_fake_bz(att))
+
+    # A missing-data attachment must never produce a file on disk.
+    assert os.listdir(tmp_path) == []
+
+
+@pytest.mark.asyncio
 async def test_list_attachments_tool_passthrough():
     bz = AsyncMock()
     bz.list_attachments = AsyncMock(
