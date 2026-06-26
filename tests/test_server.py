@@ -218,6 +218,27 @@ async def test_download_attachment_text_invalid_utf8_falls_back_to_base64(tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_download_attachment_unwritable_dir_raises(tmp_path):
+    # Make output_dir's parent a regular file so os.makedirs fails with OSError.
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a dir")
+    att = {
+        "id": 21,
+        "file_name": "x.bin",
+        "content_type": "application/octet-stream",
+        "data": base64.b64encode(b"\x00\x01").decode(),
+    }
+
+    with pytest.raises(ToolError, match="Cannot create download directory"):
+        await server.download_attachment(
+            attachment_id=21,
+            output_dir=str(blocker / "sub"),
+            delivery="save",
+            bz=_fake_bz(att),
+        )
+
+
+@pytest.mark.asyncio
 async def test_list_attachments_tool_passthrough():
     bz = AsyncMock()
     bz.list_attachments = AsyncMock(

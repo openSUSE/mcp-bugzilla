@@ -748,13 +748,21 @@ async def download_attachment(
 
         def _save() -> dict[str, Any]:
             target = output_dir or download_dir
-            os.makedirs(target, exist_ok=True)
+            try:
+                os.makedirs(target, exist_ok=True)
+            except OSError as e:
+                raise ToolError(f"Cannot create download directory {target!r}: {e}")
             path = os.path.join(
                 target,
                 f"{attachment_id}-{safe_filename(att.get('file_name'), attachment_id)}",
             )
-            with open(path, "wb") as f:
-                f.write(raw)
+            try:
+                with open(path, "wb") as f:
+                    f.write(raw)
+            except OSError as e:
+                raise ToolError(
+                    f"Failed to write attachment {attachment_id} to {path!r}: {e}"
+                )
             abspath = os.path.abspath(path)
             mcp_log.info(f"[LLM-RES] attachment {attachment_id} saved to {abspath}")
             return {"mode": "saved", "path": abspath, **meta}
