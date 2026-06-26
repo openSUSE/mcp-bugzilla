@@ -316,30 +316,31 @@ async def update_bug_status(
 ) -> dict[str, Any]:
     """Update the status of a bug. Optionally add a comment explaining the status change.
 
-    Valid statuses: NEW, ASSIGNED, MODIFIED, ON_QA, VERIFIED, CLOSED
-    For CLOSED, you MUST also provide a resolution (FIXED, WONTFIX, NOTABUG, DUPLICATE, etc.)
+    Valid statuses are instance-specific. Common resolved states are CLOSED and
+    RESOLVED (e.g. bugzilla.suse.com). Both require a resolution.
 
     Args:
         bug_id: Bug ID to update
         status: New status
-        resolution: Resolution (required when status is CLOSED)
+        resolution: Resolution (required when status is CLOSED or RESOLVED)
         comment: Optional comment explaining the change
     """
     mcp_log.info(
         f"[LLM-REQ] update_bug_status(bug_id={bug_id}, status='{status}', resolution={resolution}, comment='{comment[:50] if comment else ''}...')"
     )
 
+    resolved_states = ("CLOSED", "RESOLVED", "VERIFIED")
+
     updates = {"status": status}
     if resolution:
         updates["resolution"] = resolution
-    elif status not in ("CLOSED", "VERIFIED"):
-        # Clear resolution when reopening
-        updates["resolution"] = ""
+    elif status not in resolved_states:
+        updates["resolution"] = ""  # Clear resolution when reopening
 
-    # Validate: CLOSED requires resolution
-    if status == "CLOSED" and not resolution:
+    # Validate: a resolved state requires a resolution
+    if status in ("CLOSED", "RESOLVED") and not resolution:
         raise ToolError(
-            "Resolution is required when setting status to CLOSED (e.g., FIXED, WONTFIX, NOTABUG, DUPLICATE)"
+            f"Resolution is required when setting status to {status} (e.g., FIXED, WONTFIX, NOTABUG, DUPLICATE)"
         )
 
     try:

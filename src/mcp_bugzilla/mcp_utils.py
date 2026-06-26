@@ -58,6 +58,29 @@ mcp_log.addHandler(handler)
 mcp_log.propagate = False
 
 
+class BugzillaAPIError(Exception):
+    """Bugzilla REST API error with code and message."""
+
+    def __init__(self, status_code: int, error: dict[str, Any]):
+        self.status_code = status_code
+        self.code = error.get("code")
+        self.message = error.get("message", "Unknown error")
+        super().__init__(
+            f"Bugzilla API error {self.code} (HTTP {status_code}): {self.message}"
+        )
+
+
+def _bugzilla_error_body(response: httpx.Response) -> Optional[dict[str, Any]]:
+    """Parse Bugzilla error from response body, if present."""
+    try:
+        body = response.json()
+        if isinstance(body, dict) and body.get("error") and "message" in body:
+            return body
+    except Exception:
+        pass
+    return None
+
+
 class Bugzilla:
     """Async Bugzilla API client"""
 
@@ -311,6 +334,12 @@ class Bugzilla:
             r = await self.client.put(url, json=payload)
             r.raise_for_status()
         except httpx.HTTPStatusError as e:
+            if (bz_error := _bugzilla_error_body(e.response)) is not None:
+                # Surface structured Bugzilla error (e.g., validation rejection)
+                mcp_log.error(
+                    f"[BZ-RES] Failed: {e.response.status_code} code={bz_error.get('code')} {bz_error['message']}"
+                )
+                raise BugzillaAPIError(e.response.status_code, bz_error) from e
             mcp_log.error(
                 f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
             )
