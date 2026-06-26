@@ -695,6 +695,7 @@ async def download_attachment(
     attachment_id: int,
     output_dir: Optional[str] = None,
     delivery: Literal["auto", "inline", "save"] = "auto",
+    include_private: bool = False,
     bz: Bugzilla = Depends(get_bz),
 ) -> dict[str, Any]:
     """Download a single attachment by id. Discover ids with ``list_attachments``.
@@ -715,6 +716,8 @@ async def download_attachment(
             Defaults to the server's configured download directory
             (--download-dir / BUGZILLA_DOWNLOAD_DIR).
         delivery: One of "auto", "inline", "save" (see above).
+        include_private: Private attachments are refused by default; pass True to
+            download one (matching bug_comments' include_private_comments).
 
     Returns:
         Text inline: ``{"mode": "text", "content": <decoded text>, ...metadata}``.
@@ -727,6 +730,11 @@ async def download_attachment(
     )
     try:
         att = await bz.get_attachment(attachment_id)
+        if att.get("is_private") and not include_private:
+            raise ToolError(
+                f"Attachment {attachment_id} is private; "
+                "pass include_private=True to download it."
+            )
         b64 = att.get("data")
         if not b64:
             raise ToolError(
