@@ -13,7 +13,7 @@ import tempfile
 from argparse import Namespace
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, List, Literal, Optional
+from typing import Any, List, Literal, Optional, TypedDict, Union
 
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
@@ -687,6 +687,36 @@ async def list_attachments(
         raise ToolError(f"Failed to list attachments\nReason: {e}")
 
 
+class _AttachmentMeta(TypedDict):
+    """Metadata returned with every download_attachment result."""
+
+    attachment_id: int
+    file_name: Optional[str]
+    content_type: str
+    size: int
+    is_private: Optional[bool]
+    is_obsolete: Optional[bool]
+
+
+class TextAttachment(_AttachmentMeta):
+    mode: Literal["text"]
+    content: str
+
+
+class Base64Attachment(_AttachmentMeta):
+    mode: Literal["base64"]
+    data_base64: str
+
+
+class SavedAttachment(_AttachmentMeta):
+    mode: Literal["saved"]
+    path: str
+
+
+# Discriminated union keyed on ``mode``; a type checker narrows on result["mode"].
+DownloadResult = Union[TextAttachment, Base64Attachment, SavedAttachment]
+
+
 @mcp.tool(
     annotations={"readOnlyHint": True, "openWorldHint": True},
     tags={"read"},
@@ -697,7 +727,7 @@ async def download_attachment(
     delivery: Literal["auto", "inline", "save"] = "auto",
     include_private: bool = False,
     bz: Bugzilla = Depends(get_bz),
-) -> dict[str, Any]:
+) -> DownloadResult:
     """Download a single attachment by id. Discover ids with ``list_attachments``.
 
     The ``delivery`` argument controls how the content is returned:
@@ -745,7 +775,7 @@ async def download_attachment(
 
         content_type = att.get("content_type", "")
         is_text = bool(is_textual(content_type) or att.get("is_patch"))
-        meta = {
+        meta: _AttachmentMeta = {
             "attachment_id": attachment_id,
             "file_name": att.get("file_name"),
             "content_type": content_type,
@@ -754,7 +784,7 @@ async def download_attachment(
             "is_obsolete": att.get("is_obsolete"),
         }
 
-        def _save() -> dict[str, Any]:
+        def _save() -> SavedAttachment:
             target = output_dir or download_dir
             try:
                 os.makedirs(target, exist_ok=True)
@@ -775,7 +805,7 @@ async def download_attachment(
             mcp_log.info(f"[LLM-RES] attachment {attachment_id} saved to {abspath}")
             return {"mode": "saved", "path": abspath, **meta}
 
-        def _inline() -> dict[str, Any]:
+        def _inline() -> Union[TextAttachment, Base64Attachment]:
             if len(raw) > MAX_FORCED_INLINE_BYTES:
                 raise ToolError(
                     f"Attachment {attachment_id} is {len(raw)} bytes, too large to "
