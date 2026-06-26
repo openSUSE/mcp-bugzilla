@@ -64,15 +64,16 @@ The server provides the following tools for interacting with Bugzilla:
   - **Returns**: A list of attachment metadata objects (`id`, `file_name`, `summary`, `content_type`, `size`, `is_private`, `is_obsolete`, `is_patch`, `creation_time`, ...). Use an `id` with `download_attachment` to fetch the file.
   - **Example**: `list_attachments(989633)`
 
-- **`download_attachment(attachment_id: int, output_dir: Optional[str] = None, delivery: "auto" | "inline" | "save" = "auto")`**: Downloads a single attachment by id. The `delivery` argument lets the caller choose how the content is returned.
+- **`download_attachment(attachment_id: int, output_dir: Optional[str] = None, delivery: "auto" | "inline" | "save" = "auto", include_private: bool = False)`**: Downloads a single attachment by id. The `delivery` argument lets the caller choose how the content is returned.
   - **Parameters**:
     - `attachment_id`: The attachment id to download (discover via `list_attachments`)
     - `output_dir`: Optional directory to save the file in when it is written to disk. Defaults to the server's configured download directory (`--download-dir` / `BUGZILLA_DOWNLOAD_DIR`).
     - `delivery`:
       - `auto` (default): textual attachments (logs, patches, plain/xml/json, ...) up to 256 KiB are returned inline as decoded `content`; binary attachments, or larger text, are written to disk.
-      - `inline`: always return the content in the response — decoded `content` for text, or base64 `data_base64` for binary. Refused above 1 MiB.
+      - `inline`: always return the content in the response — decoded `content` for text, or base64 `data_base64` for binary (and for text whose bytes are not valid UTF-8). Refused above 1 MiB.
       - `save`: always write the file to disk and return its `path`.
-  - **Returns**: Text inline: `{"mode": "text", "content": <decoded text>, ...metadata}`. Binary inline: `{"mode": "base64", "data_base64": <base64>, ...metadata}`. On disk: `{"mode": "saved", "path": <absolute path>, ...metadata}`.
+    - `include_private`: Whether to download a private attachment (default: `False`); a private attachment is refused unless this is set to `True`.
+  - **Returns**: Text inline: `{"mode": "text", "content": <decoded text>, ...metadata}`. Binary inline: `{"mode": "base64", "data_base64": <base64>, ...metadata}`. On disk: `{"mode": "saved", "path": <absolute path>, ...metadata}`. The saved file is named `<attachment_id>-<sanitized file_name>`.
   - **Example**: `download_attachment(685495)` · `download_attachment(685495, delivery="save")`
 
 #### Write Operations
@@ -252,7 +253,7 @@ The `mcp-bugzilla` command supports the following options:
 | `--api-key-header <HEADER_NAME>` | `MCP_API_KEY_HEADER` | `ApiKey` | HTTP header name for the Bugzilla API key (http transport only) |
 | `--use-auth-header` | `USE_AUTH_HEADER` | `False` | Use `Authorization: Bearer` header instead of `api_key` query parameter |
 | `--read-only` | `MCP_READ_ONLY` | `False` | Disables all tools which can modify a bug. Works well in conjunction with `MCP_BUGZILLA_DISABLED_METHODS` |
-| `--download-dir <DIR>` | `BUGZILLA_DOWNLOAD_DIR` | `<tmpdir>/mcp-bugzilla` | Directory where `download_attachment` writes binary/oversized attachments. The directory is created on first use |
+| `--download-dir <DIR>` | `BUGZILLA_DOWNLOAD_DIR` | `<tmpdir>/mcp-bugzilla` | Directory where `download_attachment` writes binary/oversized attachments. The default directory is created on first use and restricted to the owner (`0o700`); an explicit `output_dir` keeps its own permissions |
 
 **Note**: `--host` and `--port` are rejected with an error when used together with `--transport stdio`.
 
