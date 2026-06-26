@@ -788,6 +788,13 @@ async def download_attachment(
             target = output_dir or download_dir
             try:
                 os.makedirs(target, exist_ok=True)
+                if not output_dir:
+                    # The default download dir is a shared, predictable temp
+                    # location; restrict it to the owner so private attachment
+                    # contents aren't world-readable. chmod (not just makedirs
+                    # mode) is needed to override umask and tighten an existing
+                    # dir. An explicit output_dir keeps the caller's own perms.
+                    os.chmod(target, 0o700)
             except OSError as e:
                 raise ToolError(f"Cannot create download directory {target!r}: {e}")
             path = os.path.join(

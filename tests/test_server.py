@@ -276,6 +276,28 @@ async def test_download_attachment_private_allowed_with_flag(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
+async def test_download_attachment_default_dir_is_owner_only(tmp_path):
+    import stat
+
+    default_dir = tmp_path / "mcp-bugzilla"
+    server.download_dir = str(default_dir)
+    att = {
+        "id": 71,
+        "file_name": "image.png",
+        "content_type": "application/octet-stream",
+        "data": base64.b64encode(b"\x89PNG").decode(),
+    }
+
+    # No output_dir -> default dir, which must be restricted to the owner.
+    await server.download_attachment(
+        attachment_id=71, delivery="save", bz=_fake_bz(att)
+    )
+
+    assert stat.S_IMODE(os.stat(default_dir).st_mode) == 0o700
+
+
+@pytest.mark.asyncio
 async def test_list_attachments_tool_passthrough():
     bz = AsyncMock()
     bz.list_attachments = AsyncMock(
