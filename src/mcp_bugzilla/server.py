@@ -37,8 +37,9 @@ read_only: bool = False
 # set by the start() function from --download-dir / BUGZILLA_DOWNLOAD_DIR.
 download_dir: str = ""
 
-# In "auto" delivery, attachments whose decoded text is at or below this size are
-# returned inline; anything larger (or any binary attachment) is written to disk.
+# In "auto" delivery, attachments whose decoded size (in bytes) is at or below this
+# limit are returned inline; anything larger (or any binary attachment) is written
+# to disk. The check is on byte length, matching the reported ``size`` field.
 MAX_INLINE_BYTES: int = 256 * 1024
 
 # Hard ceiling for delivery="inline": refuse to force anything larger into the
@@ -719,6 +720,7 @@ async def download_attachment(
         Text inline: ``{"mode": "text", "content": <decoded text>, ...metadata}``.
         Binary inline: ``{"mode": "base64", "data_base64": <base64>, ...metadata}``.
         Saved to disk: ``{"mode": "saved", "path": <abspath>, ...metadata}``.
+        The on-disk file is named ``<attachment_id>-<sanitized file_name>``.
     """
     mcp_log.info(
         f"[LLM-REQ] download_attachment(attachment_id={attachment_id}, delivery={delivery!r})"
