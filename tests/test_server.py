@@ -94,6 +94,7 @@ async def test_download_attachment_filename_traversal_neutralized(tmp_path):
 
     result = await server.download_attachment(attachment_id=9, bz=_fake_bz(att))
 
+    assert result["mode"] == "saved"
     saved = os.path.realpath(result["path"])
     # The sanitized file must stay inside the target directory.
     assert saved.startswith(os.path.realpath(str(tmp_path)) + os.sep)
@@ -116,6 +117,7 @@ async def test_download_attachment_explicit_output_dir(tmp_path):
         attachment_id=10, output_dir=str(out), bz=_fake_bz(att)
     )
 
+    assert result["mode"] == "saved"
     assert os.path.dirname(result["path"]) == str(out)
     assert os.path.isfile(result["path"])
 
