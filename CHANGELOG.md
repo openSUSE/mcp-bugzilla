@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
+## [Unreleased]
+
+### Fixed
+- Surface Bugzilla API error message/code on 4xx responses (e.g., validation rejection on HTTP 404) by raising `BugzillaAPIError` instead of generic HTTP status text.
+
+### Changed
+- Require resolution when setting status to `RESOLVED` as well as `CLOSED` in `update_bug_status`.
+
 ## [v0.15.1] - 2026-06-22
 - Fix incorrect PyPi publishing
 
