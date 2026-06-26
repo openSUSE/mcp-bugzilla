@@ -9,7 +9,6 @@ License: Apache 2.0
 import base64
 import importlib.metadata
 import os
-import re
 import tempfile
 from argparse import Namespace
 from contextlib import asynccontextmanager
@@ -20,7 +19,7 @@ from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
 from fastmcp.exceptions import PromptError, ResourceError, ToolError, ValidationError
 
-from .mcp_utils import Bugzilla, mcp_log
+from .mcp_utils import Bugzilla, is_textual, mcp_log, safe_filename
 
 # The FastMCP instance
 mcp = FastMCP("Bugzilla")
@@ -660,41 +659,6 @@ async def add_attachment(
         raise ToolError(f"Failed to add attachment\n{e}")
 
 
-# Content types whose payload is textual and safe to return inline as decoded text.
-_TEXTUAL_CONTENT_TYPES = {
-    "application/json",
-    "application/xml",
-    "application/x-sh",
-    "application/javascript",
-    "application/x-yaml",
-    "image/svg+xml",
-}
-
-
-def _is_textual(content_type: str) -> bool:
-    """Whether an attachment's content can be returned inline as decoded text."""
-    ct = (content_type or "").split(";", 1)[0].strip().lower()
-    if ct.startswith("text/"):
-        return True
-    if ct in _TEXTUAL_CONTENT_TYPES:
-        return True
-    if ct.endswith(("+xml", "+json")):
-        return True
-    return "patch" in ct or "diff" in ct
-
-
-def _safe_filename(name: Optional[str], attachment_id: int) -> str:
-    """Sanitize a Bugzilla-supplied file name for safe use as a path component.
-
-    Strips any directory part and collapses anything outside ``[A-Za-z0-9._-]``
-    to ``_`` so a hostile ``file_name`` (e.g. ``../../etc/passwd``) cannot escape
-    the target directory.
-    """
-    base = os.path.basename(name or "").strip()
-    base = re.sub(r"[^A-Za-z0-9._-]", "_", base).strip("._")
-    return base or f"attachment-{attachment_id}"
-
-
 @mcp.tool(
     annotations={"readOnlyHint": True, "openWorldHint": True},
     tags={"read"},
@@ -764,7 +728,7 @@ async def download_attachment(
         raw = base64.b64decode(b64)
 
         content_type = att.get("content_type", "")
-        is_text = bool(_is_textual(content_type) or att.get("is_patch"))
+        is_text = bool(is_textual(content_type) or att.get("is_patch"))
         meta = {
             "attachment_id": attachment_id,
             "file_name": att.get("file_name"),
@@ -779,7 +743,7 @@ async def download_attachment(
             os.makedirs(target, exist_ok=True)
             path = os.path.join(
                 target,
-                f"{attachment_id}-{_safe_filename(att.get('file_name'), attachment_id)}",
+                f"{attachment_id}-{safe_filename(att.get('file_name'), attachment_id)}",
             )
             with open(path, "wb") as f:
                 f.write(raw)

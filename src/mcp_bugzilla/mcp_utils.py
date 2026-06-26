@@ -9,6 +9,7 @@ License: Apache 2.0
 import asyncio
 import logging
 import os
+import re
 from datetime import datetime
 from typing import Any, Optional
 
@@ -426,3 +427,38 @@ class Bugzilla:
             f"file_name={attachment.get('file_name')!r} size={attachment.get('size')}"
         )
         return attachment
+
+
+# Content types whose payload is textual and safe to return inline as decoded text.
+_TEXTUAL_CONTENT_TYPES = {
+    "application/json",
+    "application/xml",
+    "application/x-sh",
+    "application/javascript",
+    "application/x-yaml",
+    "image/svg+xml",
+}
+
+
+def is_textual(content_type: str) -> bool:
+    """Whether an attachment's content can be returned inline as decoded text."""
+    ct = (content_type or "").split(";", 1)[0].strip().lower()
+    if ct.startswith("text/"):
+        return True
+    if ct in _TEXTUAL_CONTENT_TYPES:
+        return True
+    if ct.endswith(("+xml", "+json")):
+        return True
+    return "patch" in ct or "diff" in ct
+
+
+def safe_filename(name: Optional[str], attachment_id: int) -> str:
+    """Sanitize a Bugzilla-supplied file name for safe use as a path component.
+
+    Strips any directory part and collapses anything outside ``[A-Za-z0-9._-]``
+    to ``_`` so a hostile ``file_name`` (e.g. ``../../etc/passwd``) cannot escape
+    the target directory.
+    """
+    base = os.path.basename(name or "").strip()
+    base = re.sub(r"[^A-Za-z0-9._-]", "_", base).strip("._")
+    return base or f"attachment-{attachment_id}"
