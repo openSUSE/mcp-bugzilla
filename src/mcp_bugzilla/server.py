@@ -795,9 +795,17 @@ async def download_attachment(
                     "Use delivery='save' or delivery='auto'."
                 )
             if is_text:
-                mcp_log.info(f"[LLM-RES] attachment {attachment_id} returned inline as text")
-                return {"mode": "text", "content": raw.decode("utf-8", errors="replace"), **meta}
-            mcp_log.info(f"[LLM-RES] attachment {attachment_id} returned inline as base64")
+                mcp_log.info(
+                    f"[LLM-RES] attachment {attachment_id} returned inline as text"
+                )
+                return {
+                    "mode": "text",
+                    "content": raw.decode("utf-8", errors="replace"),
+                    **meta,
+                }
+            mcp_log.info(
+                f"[LLM-RES] attachment {attachment_id} returned inline as base64"
+            )
             return {"mode": "base64", "data_base64": b64, **meta}
 
         if delivery == "save":
