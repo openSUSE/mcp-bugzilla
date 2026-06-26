@@ -6,17 +6,20 @@ Author: Sai Karthik <kskarthik@disroot.org>
 License: Apache 2.0
 """
 
+import base64
 import importlib.metadata
+import os
+import tempfile
 from argparse import Namespace
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional, TypedDict, Union
 
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
 from fastmcp.exceptions import PromptError, ResourceError, ToolError, ValidationError
 
-from .mcp_utils import Bugzilla, mcp_log
+from .mcp_utils import Bugzilla, is_textual, mcp_log, safe_filename
 
 # The FastMCP instance
 mcp = FastMCP("Bugzilla")
@@ -29,6 +32,19 @@ base_url: str = ""
 
 # Global variable for read-only mode
 read_only: bool = False
+
+# Directory where binary / oversized attachments are written by download_attachment,
+# set by the start() function from --download-dir / BUGZILLA_DOWNLOAD_DIR.
+download_dir: str = ""
+
+# In "auto" delivery, attachments whose decoded size (in bytes) is at or below this
+# limit are returned inline; anything larger (or any binary attachment) is written
+# to disk. The check is on byte length, matching the reported ``size`` field.
+MAX_INLINE_BYTES: int = 256 * 1024
+
+# Hard ceiling for delivery="inline": refuse to force anything larger into the
+# response (it would flood the conversation); the caller should save it instead.
+MAX_FORCED_INLINE_BYTES: int = 1024 * 1024
 
 
 @asynccontextmanager
@@ -644,6 +660,204 @@ async def add_attachment(
         raise ToolError(f"Failed to add attachment\n{e}")
 
 
+@mcp.tool(
+    annotations={"readOnlyHint": True, "openWorldHint": True},
+    tags={"read"},
+)
+async def list_attachments(
+    bug_id: int, bz: Bugzilla = Depends(get_bz)
+) -> list[dict[str, Any]]:
+    """List a bug's attachments (metadata only, without the file contents).
+
+    Use this to discover attachment ids, then pass an id to ``download_attachment``
+    to fetch the actual file. The base64 ``data`` field is intentionally omitted
+    here to keep responses small.
+
+    Args:
+        bug_id: The bug whose attachments to list.
+
+    Returns:
+        A list of attachment metadata objects (id, file_name, summary,
+        content_type, size, is_private, is_obsolete, is_patch, creation_time, ...).
+    """
+    mcp_log.info(f"[LLM-REQ] list_attachments(bug_id={bug_id})")
+    try:
+        return await bz.list_attachments(bug_id)
+    except Exception as e:
+        raise ToolError(f"Failed to list attachments\nReason: {e}")
+
+
+class _AttachmentMeta(TypedDict):
+    """Metadata returned with every download_attachment result."""
+
+    attachment_id: int
+    file_name: Optional[str]
+    content_type: str
+    size: int
+    is_private: Optional[bool]
+    is_obsolete: Optional[bool]
+
+
+class TextAttachment(_AttachmentMeta):
+    mode: Literal["text"]
+    content: str
+
+
+class Base64Attachment(_AttachmentMeta):
+    mode: Literal["base64"]
+    data_base64: str
+
+
+class SavedAttachment(_AttachmentMeta):
+    mode: Literal["saved"]
+    path: str
+
+
+# Discriminated union keyed on ``mode``; a type checker narrows on result["mode"].
+DownloadResult = Union[TextAttachment, Base64Attachment, SavedAttachment]
+
+
+@mcp.tool(
+    annotations={"readOnlyHint": True, "openWorldHint": True},
+    tags={"read"},
+)
+async def download_attachment(
+    attachment_id: int,
+    output_dir: Optional[str] = None,
+    delivery: Literal["auto", "inline", "save"] = "auto",
+    include_private: bool = False,
+    bz: Bugzilla = Depends(get_bz),
+) -> DownloadResult:
+    """Download a single attachment by id. Discover ids with ``list_attachments``.
+
+    The ``delivery`` argument controls how the content is returned:
+
+    - ``"auto"`` (default): textual attachments (logs, patches, plain/xml/json, ...)
+      up to 256 KiB are returned inline as decoded ``content``; binary attachments,
+      or larger text, are written to disk and the absolute ``path`` is returned.
+    - ``"inline"``: always return the content in the response — decoded ``content``
+      for text, or base64 ``data_base64`` for binary (and for text whose bytes are
+      not valid UTF-8). Refused above 1 MiB.
+    - ``"save"``: always write the file to disk and return its ``path``.
+
+    Args:
+        attachment_id: The attachment id to download.
+        output_dir: Directory to save the file in when it is written to disk.
+            Defaults to the server's configured download directory
+            (--download-dir / BUGZILLA_DOWNLOAD_DIR).
+        delivery: One of "auto", "inline", "save" (see above).
+        include_private: Private attachments are refused by default; pass True to
+            download one (matching bug_comments' include_private_comments).
+
+    Returns:
+        Text inline: ``{"mode": "text", "content": <decoded text>, ...metadata}``.
+        Binary inline: ``{"mode": "base64", "data_base64": <base64>, ...metadata}``.
+        Saved to disk: ``{"mode": "saved", "path": <abspath>, ...metadata}``.
+        The on-disk file is named ``<attachment_id>-<sanitized file_name>``.
+    """
+    mcp_log.info(
+        f"[LLM-REQ] download_attachment(attachment_id={attachment_id}, delivery={delivery!r})"
+    )
+    try:
+        att = await bz.get_attachment(attachment_id)
+        if att.get("is_private") and not include_private:
+            raise ToolError(
+                f"Attachment {attachment_id} is private; "
+                "pass include_private=True to download it."
+            )
+        b64 = att.get("data")
+        if not b64:
+            raise ToolError(
+                f"Attachment {attachment_id} has no downloadable data "
+                "(it may be private or restricted for your token)."
+            )
+        raw = base64.b64decode(b64)
+
+        content_type = att.get("content_type", "")
+        is_text = bool(is_textual(content_type) or att.get("is_patch"))
+        meta: _AttachmentMeta = {
+            "attachment_id": attachment_id,
+            "file_name": att.get("file_name"),
+            "content_type": content_type,
+            "size": len(raw),
+            "is_private": att.get("is_private"),
+            "is_obsolete": att.get("is_obsolete"),
+        }
+
+        def _save() -> SavedAttachment:
+            target = output_dir or download_dir
+            try:
+                os.makedirs(target, exist_ok=True)
+                if not output_dir:
+                    # The default download dir is a shared, predictable temp
+                    # location; restrict it to the owner so private attachment
+                    # contents aren't world-readable. chmod (not just makedirs
+                    # mode) is needed to override umask and tighten an existing
+                    # dir. An explicit output_dir keeps the caller's own perms.
+                    os.chmod(target, 0o700)
+            except OSError as e:
+                raise ToolError(f"Cannot create download directory {target!r}: {e}")
+            path = os.path.join(
+                target,
+                f"{attachment_id}-{safe_filename(att.get('file_name'), attachment_id)}",
+            )
+            try:
+                with open(path, "wb") as f:
+                    f.write(raw)
+            except OSError as e:
+                raise ToolError(
+                    f"Failed to write attachment {attachment_id} to {path!r}: {e}"
+                )
+            abspath = os.path.abspath(path)
+            mcp_log.info(f"[LLM-RES] attachment {attachment_id} saved to {abspath}")
+            return {"mode": "saved", "path": abspath, **meta}
+
+        def _inline() -> Union[TextAttachment, Base64Attachment]:
+            if len(raw) > MAX_FORCED_INLINE_BYTES:
+                raise ToolError(
+                    f"Attachment {attachment_id} is {len(raw)} bytes, too large to "
+                    f"return inline (limit {MAX_FORCED_INLINE_BYTES}). "
+                    "Use delivery='save' or delivery='auto'."
+                )
+            if is_text:
+                # A textual content_type (or is_patch flag) is only a hint; the
+                # bytes may not actually be valid UTF-8. Decode strictly and fall
+                # back to base64 rather than silently returning U+FFFD-corrupted
+                # text marked as a successful "text" result.
+                try:
+                    content = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    mcp_log.info(
+                        f"[LLM-RES] attachment {attachment_id} is not valid UTF-8, "
+                        "returned inline as base64"
+                    )
+                    return {"mode": "base64", "data_base64": b64, **meta}
+                mcp_log.info(
+                    f"[LLM-RES] attachment {attachment_id} returned inline as text"
+                )
+                return {"mode": "text", "content": content, **meta}
+            mcp_log.info(
+                f"[LLM-RES] attachment {attachment_id} returned inline as base64"
+            )
+            return {"mode": "base64", "data_base64": b64, **meta}
+
+        if delivery == "save":
+            return _save()
+        if delivery == "inline":
+            return _inline()
+        if delivery == "auto":
+            if is_text and len(raw) <= MAX_INLINE_BYTES:
+                return _inline()
+            return _save()
+        # Unreachable while delivery is constrained by the Literal, but guard
+        # explicitly so a newly-added mode fails loudly instead of falling through.
+        raise ToolError(f"Unknown delivery mode: {delivery!r}")
+    except ToolError:
+        raise
+    except Exception as e:
+        raise ToolError(f"Failed to download attachment {attachment_id}\nReason: {e}")
+
+
 def disable_components_selectively():
     """
     Disables MCP components based on environment variables.
@@ -683,9 +897,12 @@ def start():
     """
     Starts the FastMCP server for Bugzilla.
     """
-    global base_url, read_only
+    global base_url, read_only, download_dir
     base_url = cli_args.bugzilla_server
     read_only = getattr(cli_args, "read_only", False)
+    download_dir = getattr(cli_args, "download_dir", None) or os.path.join(
+        tempfile.gettempdir(), "mcp-bugzilla"
+    )
     # Ensure base_url doesn't have trailing slash for consistency
     if base_url.endswith("/"):
         base_url = base_url[:-1]

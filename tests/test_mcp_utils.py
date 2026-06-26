@@ -2,7 +2,7 @@ import pytest
 import pytest_asyncio
 import respx
 from httpx import Response
-from mcp_bugzilla.mcp_utils import Bugzilla
+from mcp_bugzilla.mcp_utils import Bugzilla, is_textual, safe_filename
 from datetime import datetime
 
 MOCK_URL = "https://bugzilla.example.com"
@@ -239,6 +239,83 @@ async def test_add_attachment(bz_client):
         body = route.calls.last.request.content
         assert b"aGVsbG8=" in body
         assert b"log.txt" in body
+
+
+@pytest.mark.asyncio
+async def test_list_attachments(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/bug/123/attachment").mock(
+            return_value=Response(
+                200,
+                json={
+                    "bugs": {
+                        "123": [
+                            {
+                                "id": 42,
+                                "file_name": "log.txt",
+                                "content_type": "text/plain",
+                                "size": 5,
+                            },
+                            {
+                                "id": 43,
+                                "file_name": "patch.diff",
+                                "content_type": "text/x-patch",
+                                "size": 10,
+                            },
+                        ]
+                    },
+                    "attachments": {},
+                },
+            )
+        )
+
+        attachments = await bz_client.list_attachments(123)
+
+        assert [a["id"] for a in attachments] == [42, 43]
+        assert all("data" not in a for a in attachments)
+        assert route.called
+        # exclude_fields=data must be sent (alongside the client's api_key param)
+        assert route.calls.last.request.url.params["exclude_fields"] == "data"
+        assert route.calls.last.request.url.params["api_key"] == MOCK_API_KEY
+
+
+@pytest.mark.asyncio
+async def test_get_attachment(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/bug/attachment/42").mock(
+            return_value=Response(
+                200,
+                json={
+                    "attachments": {
+                        "42": {
+                            "id": 42,
+                            "file_name": "log.txt",
+                            "content_type": "text/plain",
+                            "size": 5,
+                            "data": "aGVsbG8=",  # base64("hello")
+                        }
+                    },
+                    "bugs": {},
+                },
+            )
+        )
+
+        att = await bz_client.get_attachment(42)
+
+        assert att["id"] == 42
+        assert att["data"] == "aGVsbG8="
+        assert route.called
+
+
+@pytest.mark.asyncio
+async def test_get_attachment_missing_raises(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/bug/attachment/999").mock(
+            return_value=Response(200, json={"attachments": {}, "bugs": {}})
+        )
+
+        with pytest.raises(ValueError, match="999 not found"):
+            await bz_client.get_attachment(999)
 
 
 @pytest.mark.asyncio
@@ -527,3 +604,47 @@ async def test_update_bug_comment_only(bz_client):
         assert route.called
         request_body = route.calls.last.request.content
         assert b"Just adding a comment" in request_body
+
+
+@pytest.mark.parametrize(
+    "content_type,expected",
+    [
+        ("text/plain", True),
+        ("text/x-log", True),
+        ("text/plain; charset=utf-8", True),
+        ("TEXT/PLAIN", True),
+        ("application/json", True),
+        ("application/xml", True),
+        ("application/x-yaml", True),
+        ("image/svg+xml", True),
+        ("application/foo+xml", True),
+        ("application/vnd.api+json", True),
+        ("text/x-patch", True),
+        ("application/x-diff", True),
+        ("application/octet-stream", False),
+        ("image/png", False),
+        ("application/pdf", False),
+        ("", False),
+        (None, False),
+    ],
+)
+def test_is_textual(content_type, expected):
+    assert is_textual(content_type) is expected
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("report.txt", "report.txt"),
+        ("../../etc/passwd", "passwd"),
+        ("/abs/path/file.log", "file.log"),
+        ("weird name!@#.txt", "weird_name___.txt"),
+        ("café.txt", "caf_.txt"),
+        (None, "attachment-7"),
+        ("", "attachment-7"),
+        ("...", "attachment-7"),
+        ("///", "attachment-7"),
+    ],
+)
+def test_safe_filename(name, expected):
+    assert safe_filename(name, 7) == expected
