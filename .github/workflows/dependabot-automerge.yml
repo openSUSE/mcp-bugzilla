@@ -4,7 +4,6 @@ on:
 
 jobs:
   automerge-dependabot-pr:
-    needs: build
     runs-on: ubuntu-latest
 
     permissions:
