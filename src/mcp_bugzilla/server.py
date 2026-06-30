@@ -839,6 +839,11 @@ async def list_attachments(
         raise ToolError(f"Failed to list attachments\nReason: {e}")
 
 
+def _as_optional_bool(value: Any) -> bool | None:
+    """Bugzilla returns flag fields as 0/1 ints; coerce to bool, preserve None."""
+    return None if value is None else bool(value)
+
+
 class _AttachmentMeta(TypedDict):
     """Metadata returned with every download_attachment result."""
 
@@ -932,8 +937,8 @@ async def download_attachment(
             "file_name": att.get("file_name"),
             "content_type": content_type,
             "size": len(raw),
-            "is_private": att.get("is_private"),
-            "is_obsolete": att.get("is_obsolete"),
+            "is_private": _as_optional_bool(att.get("is_private")),
+            "is_obsolete": _as_optional_bool(att.get("is_obsolete")),
         }
 
         def _save() -> SavedAttachment:

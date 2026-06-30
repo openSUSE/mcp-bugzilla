@@ -280,6 +280,27 @@ async def test_download_attachment_private_allowed_with_flag(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_download_attachment_int_flags_coerced_to_bool(tmp_path):
+    # Bugzilla's REST API returns is_private/is_obsolete as 0/1 ints; they must
+    # surface as real bools or FastMCP rejects the output schema.
+    server.download_dir = str(tmp_path)
+    att = {
+        "id": 50,
+        "file_name": "log.txt",
+        "content_type": "text/plain",
+        "size": 5,
+        "is_private": 0,
+        "is_obsolete": 1,
+        "data": base64.b64encode(b"hello").decode(),
+    }
+
+    result = await server.download_attachment(attachment_id=50, bz=_fake_bz(att))
+
+    assert result["is_private"] is False
+    assert result["is_obsolete"] is True
+
+
+@pytest.mark.asyncio
 @pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
 async def test_download_attachment_default_dir_is_owner_only(tmp_path):
     import stat
