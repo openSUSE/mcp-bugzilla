@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [v0.16.0] - 2026-07-02
+
 ### Fixed
 - Surface Bugzilla API error message/code on 4xx responses (e.g., validation rejection on HTTP 404) by raising `BugzillaAPIError` instead of generic HTTP status text.
 
