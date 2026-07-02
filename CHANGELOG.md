@@ -14,22 +14,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   - `inline`: always return base64-encoded content
   - `save`: always save to disk (with safe filename and restricted permissions)
 - Support for `include_private` parameter to allow downloading private attachments
-- Comprehensive error handling for attachment download failures (fetch vs. save errors)
+- Comprehensive error handling for attachment download failures
 
 ### Fixed
 - Surface Bugzilla API error message/code on 4xx responses (e.g., validation rejection on HTTP 404) by raising `BugzillaAPIError` instead of generic HTTP status text.
 - Reject attachment download when Bugzilla returns no data
 - Return base64 for text attachments that aren't valid UTF-8
-- Restrict default download directory permissions to owner (0o700)
+- Restrict download directory permissions to owner (0o700)
 
 ### Changed
 - Require resolution when setting status to `RESOLVED` as well as `CLOSED` in `update_bug_status`.
 - Lower inline attachment delivery ceiling from 10 MiB to 1 MiB
 
+### Deprecated
+- Docker/Podman installation is no longer supported. Use PyPI installation (`uvx mcp-bugzilla`) or install from source instead.
+
 ### Documentation
 - Document `include_private` parameter for attachment downloads
 - Clarify byte-based inline limit and saved-file naming conventions
 - Document UTF-8 fallback and default directory permissions
+- Remove Docker/Podman installation documentation
 
 ## [v0.15.1] - 2026-06-22
 - Fix incorrect PyPi publishing

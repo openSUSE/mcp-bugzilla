@@ -201,22 +201,6 @@ uvx mcp-bugzilla
 
 ```
 
-### Docker / Podman
-
-The easiest way to run the server is using Docker or Podman:
-
-```bash
-docker pull kskarthik/mcp-bugzilla
-docker run -p 8000:8000 \
-  -e BUGZILLA_SERVER=https://bugzilla.example.com \
-  kskarthik/mcp-bugzilla \
-  --bugzilla-server https://bugzilla.example.com \
-  --host 0.0.0.0 \
-  --port 8000
-```
-
-**Official Docker Hub repository**: https://hub.docker.com/r/kskarthik/mcp-bugzilla/
-
 ### From Source
 
 1. **Clone the repository:**
