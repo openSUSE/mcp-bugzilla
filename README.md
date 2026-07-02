@@ -194,12 +194,49 @@ The server provides the following tools for interacting with Bugzilla:
 
 ## Installation
 
-### PyPi
+### PyPI
 
-```
-uvx mcp-bugzilla
+The easiest way to install and run `mcp-bugzilla` is using [uv](https://github.com/astral-sh/uv):
 
+#### Option 1: Using `uvx` (Recommended - No Installation Required)
+
+Run the server directly without installing it:
+
+```bash
+uvx mcp-bugzilla --bugzilla-server https://bugzilla.example.com
 ```
+
+This will automatically download and run the latest version.
+
+#### Option 2: Install with `uv pip`
+
+If you prefer to have `mcp-bugzilla` installed in your system:
+
+```bash
+# Install the package
+uv pip install mcp-bugzilla
+
+# Run the server
+mcp-bugzilla --bugzilla-server https://bugzilla.example.com
+```
+
+#### Option 3: Install in a Virtual Environment
+
+Create an isolated environment for `mcp-bugzilla`:
+
+```bash
+# Create a virtual environment
+uv venv mcp-bugzilla-env
+source mcp-bugzilla-env/bin/activate  # On Windows: mcp-bugzilla-env\Scripts\activate
+
+# Install the package
+uv pip install mcp-bugzilla
+
+# Run the server
+mcp-bugzilla --bugzilla-server https://bugzilla.example.com
+```
+
+**Note**: If you don't have `uv` installed, install it first from https://github.com/astral-sh/uv#installation
 
 ### From Source
 
