@@ -65,6 +65,14 @@ def main():
         help="Bugzilla API key. Required for --transport stdio (no HTTP headers exist there). Environment variable BUGZILLA_API_KEY can also be used. Ignored for --transport http (clients send the key per-request via the API key header).",
     )
     parser.add_argument(
+        "--allow-anonymous",
+        action="store_true",
+        default=os.getenv("MCP_ALLOW_ANONYMOUS", "false").lower() == "true",
+        help="Allow anonymous (unauthenticated) access when no API key is provided. "
+        "Useful for read-only access to a public Bugzilla. Environment variable "
+        "MCP_ALLOW_ANONYMOUS=true can also be used. Off by default.",
+    )
+    parser.add_argument(
         "--download-dir",
         type=str,
         default=os.getenv("BUGZILLA_DOWNLOAD_DIR"),
@@ -97,9 +105,10 @@ def main():
         )
         if explicit_host_or_port:
             parser.error("--host/--port are not valid with --transport stdio")
-        if not args.api_key:
+        if not args.api_key and not args.allow_anonymous:
             parser.error(
-                "--transport stdio requires --api-key or the BUGZILLA_API_KEY environment variable"
+                "--transport stdio requires --api-key or the BUGZILLA_API_KEY "
+                "environment variable (or --allow-anonymous for public read-only access)"
             )
     elif args.transport == "http" and args.api_key:
         # In http mode the server takes the API key from each client's per-request

@@ -668,3 +668,33 @@ def test_is_textual(content_type, expected):
 )
 def test_safe_filename(name, expected):
     assert safe_filename(name, 7) == expected
+
+
+@pytest.mark.asyncio
+async def test_anonymous_client_sends_no_api_key():
+    # Empty API key => anonymous access: no api_key query param is sent.
+    client = Bugzilla(MOCK_URL, "")
+    try:
+        async with respx.mock(base_url=MOCK_URL) as respx_mock:
+            route = respx_mock.get("/rest/version").mock(
+                return_value=Response(200, json={"version": "5.0.4"})
+            )
+            await client.server_version()
+            assert "api_key" not in route.calls.last.request.url.params
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_anonymous_client_sends_no_auth_header():
+    # Empty API key with use_auth_header => no Authorization header is sent.
+    client = Bugzilla(MOCK_URL, "", use_auth_header=True)
+    try:
+        async with respx.mock(base_url=MOCK_URL) as respx_mock:
+            route = respx_mock.get("/rest/version").mock(
+                return_value=Response(200, json={"version": "5.0.4"})
+            )
+            await client.server_version()
+            assert "authorization" not in route.calls.last.request.headers
+    finally:
+        await client.close()

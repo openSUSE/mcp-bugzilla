@@ -90,10 +90,11 @@ class Bugzilla:
         self.api_key = api_key
         params = {}
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
-        if use_auth_header:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        else:
-            params["api_key"] = self.api_key
+        if self.api_key:
+            if use_auth_header:
+                headers["Authorization"] = f"Bearer {self.api_key}"
+            else:
+                params["api_key"] = self.api_key
         # We'll use a single client for the instance
         self.client = httpx.AsyncClient(
             base_url=self.api_url,

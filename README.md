@@ -274,6 +274,7 @@ The `mcp-bugzilla` command supports the following options:
 | `--api-key-header <HEADER_NAME>` | `MCP_API_KEY_HEADER` | `ApiKey` | HTTP header name for the Bugzilla API key (http transport only) |
 | `--use-auth-header` | `USE_AUTH_HEADER` | `False` | Use `Authorization: Bearer` header instead of `api_key` query parameter |
 | `--read-only` | `MCP_READ_ONLY` | `False` | Disables all tools which can modify a bug. Works well in conjunction with `MCP_BUGZILLA_DISABLED_METHODS` |
+| `--allow-anonymous` | `MCP_ALLOW_ANONYMOUS` | `False` | Allow anonymous (unauthenticated) access when no API key is provided. Useful for read-only access to a public Bugzilla. Off by default |
 | `--download-dir <DIR>` | `BUGZILLA_DOWNLOAD_DIR` | `<tmpdir>/mcp-bugzilla` | Directory where `download_attachment` writes binary/oversized attachments. The default directory is created on first use and restricted to the owner (`0o700`); an explicit `output_dir` keeps its own permissions |
 
 **Note**: `--host` and `--port` are rejected with an error when used together with `--transport stdio`.

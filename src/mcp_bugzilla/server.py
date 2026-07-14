@@ -61,7 +61,7 @@ async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
 
     if transport == "stdio":
         api_key_value = getattr(cli_args, "api_key", None)
-        if not api_key_value:
+        if not api_key_value and not getattr(cli_args, "allow_anonymous", False):
             # Defense in depth; main() already validates this at startup.
             raise ValidationError(
                 "stdio transport requires --api-key or BUGZILLA_API_KEY env var"
@@ -69,13 +69,13 @@ async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
     else:
         api_key_header = getattr(cli_args, "api_key_header", "ApiKey")
         api_key_value = headers.get(api_key_header.lower())
-        if not api_key_value:
+        if not api_key_value and not getattr(cli_args, "allow_anonymous", False):
             raise ValidationError(f"`{api_key_header}` header is required")
 
     mcp_log.debug("api_key: Found")
     bz = Bugzilla(
         url=base_url,
-        api_key=api_key_value,
+        api_key=api_key_value or "",
         use_auth_header=getattr(cli_args, "use_auth_header", False),
     )
     try:

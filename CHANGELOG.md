@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- `--allow-anonymous` flag (env `MCP_ALLOW_ANONYMOUS`): allow anonymous (unauthenticated) access when no API key is provided, for read-only access to a public Bugzilla. Off by default; works in both `http` and `stdio` transports and pairs well with `--read-only`.
+
 ## [v0.16.0] - 2026-07-02
 
 ### Added
