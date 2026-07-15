@@ -84,16 +84,19 @@ def _bugzilla_error_body(response: httpx.Response) -> Optional[dict[str, Any]]:
 class Bugzilla:
     """Async Bugzilla API client"""
 
-    def __init__(self, url: str, api_key: str, use_auth_header: bool = False):
+    def __init__(self, url: str, api_key: str = "", use_auth_header: bool = False):
         self.base_url = url.rstrip("/")
         self.api_url = f"{self.base_url}/rest"
         self.api_key = api_key
         params = {}
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
-        if use_auth_header:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        else:
-            params["api_key"] = self.api_key
+        # Only attach auth credentials when a non-empty key is provided;
+        # an empty key means anonymous access (no api_key param or Authorization header).
+        if api_key:
+            if use_auth_header:
+                headers["Authorization"] = f"Bearer {self.api_key}"
+            else:
+                params["api_key"] = api_key
         # We'll use a single client for the instance
         self.client = httpx.AsyncClient(
             base_url=self.api_url,
@@ -105,11 +108,6 @@ class Bugzilla:
 
     async def close(self):
         await self.client.aclose()
-
-    @property
-    def params(self) -> dict[str, Any]:
-        """Return params (mainly for read access if needed externally)"""
-        return {"api_key": self.api_key}
 
     async def server_version(self) -> str:
         """Fetch bugzilla server version"""

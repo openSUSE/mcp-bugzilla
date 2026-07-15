@@ -29,9 +29,18 @@ Optional flags:
 |------|-------------|
 | `--host` | Listen address (default: `127.0.0.1`) |
 | `--port` | Listen port (default: `8000`) |
-| `--api-key-header` | Header name for client API key (default: `ApiKey`) |
-| `--use-auth-header` | Send API key as `Authorization: Bearer` to Bugzilla (for Red Hat Bugzilla etc.) |
+| `--mcp-auth-header` | Header name for client API key (default: `ApiKey`; env: `MCP_AUTH_HEADER`) |
+| `--bugzilla-api-key` | Static Bugzilla API key; if omitted access is anonymous (env: `BUGZILLA_API_KEY`) |
+| `--bugzilla-auth-mode` | How to authenticate with Bugzilla: `query` (default) or `bearer` for `Authorization: Bearer` (env: `BUGZILLA_AUTH_MODE`) |
 | `--read-only` | Disable all write tools |
+
+**Deprecated flags** (still work but log a warning — migrate to the replacements above):
+
+| Deprecated Flag | Replacement |
+|-----------------|-------------|
+| `--api-key-header` / `MCP_API_KEY_HEADER` | `--mcp-auth-header` / `MCP_AUTH_HEADER` |
+| `--api-key` | `--bugzilla-api-key` / `BUGZILLA_API_KEY` |
+| `--use-auth-header` | `--bugzilla-auth-mode bearer` |
 
 ## Running Tests
 
@@ -62,10 +71,12 @@ Combined with `--read-only` to restrict to a specific read-only subset.
 
 ## Authentication Flow
 
-- Clients send a Bugzilla API key in an HTTP header (default header name: `ApiKey`).
-- The server extracts this key per-request and forwards it to Bugzilla either as:
-  - `?api_key=...` query parameter (default), or
-  - `Authorization: Bearer ...` header (`--use-auth-header`).
+- Clients (http transport) send a Bugzilla API key in an HTTP header (default header name: `ApiKey`, configurable via `--mcp-auth-header`).
+- For stdio transport, the key comes from `--bugzilla-api-key` / `BUGZILLA_API_KEY`.
+- If no non-empty key is found from any source, access is **anonymous** (no credentials sent to Bugzilla).
+- When a key is present, the server forwards it to Bugzilla either as:
+  - `?api_key=...` query parameter (`--bugzilla-auth-mode query`, default), or
+  - `Authorization: Bearer <KEY>` header (`--bugzilla-auth-mode bearer`, required for Red Hat Bugzilla).
 
 ## Docker / Podman
 
