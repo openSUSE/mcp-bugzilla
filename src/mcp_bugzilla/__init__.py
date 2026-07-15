@@ -108,6 +108,12 @@ def main():
         )
         sys.exit(1)
 
+    if args.bugzilla_auth_mode not in ["query", "bearer"]:
+        mcp_log.critical(
+            f"Error: Invalid --bugzilla-auth-mode '{args.bugzilla_auth_mode}'. Must be 'query' or 'bearer'. Exiting."
+        )
+        sys.exit(1)
+
     # TODO: Remove deprecated arg handling when deprecation period expires.
     # Map deprecated args to their replacements, with a visible warning.
     _new_auth_header_set = os.getenv("MCP_AUTH_HEADER") or any(
