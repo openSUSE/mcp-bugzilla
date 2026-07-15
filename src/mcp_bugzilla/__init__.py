@@ -51,7 +51,7 @@ def main():
         type=str,
         choices=["query", "bearer"],
         default=os.getenv("BUGZILLA_AUTH_MODE", "query"),
-        help="How to authenticate with Bugzilla: 'query' (default) sends the API key as the api_key query parameter; 'bearer' sends it as an Authorization: ****** (required for some Bugzilla instances such as Red Hat Bugzilla). Environment variable BUGZILLA_AUTH_MODE can also be used. Replaces --use-auth-header.",
+        help="How to authenticate with Bugzilla: 'query' (default) sends the API key as the api_key query parameter; 'bearer' sends it as an Authorization: Bearer <KEY> header (required for some Bugzilla instances such as Red Hat Bugzilla). Environment variable BUGZILLA_AUTH_MODE can also be used. Replaces --use-auth-header.",
     )
 
     # --- Deprecated args kept for backward compatibility ---

@@ -272,7 +272,7 @@ The `mcp-bugzilla` command supports the following options:
 | `--port <PORT>` | `MCP_PORT` | `8000` | Port for the MCP server to listen on (http transport only) |
 | `--mcp-auth-header <HEADER>` | `MCP_AUTH_HEADER` | `ApiKey` | HTTP header name that clients use to send the Bugzilla API key to this MCP server (http transport only). If the client omits this header, access falls back to `--bugzilla-api-key` or is anonymous |
 | `--bugzilla-api-key <KEY>` | `BUGZILLA_API_KEY` | *none* | Static Bugzilla API key. Optional: if omitted and not provided per-request via `--mcp-auth-header` (http), access is **anonymous**. For `--transport stdio` this is the only source of the key |
-| `--bugzilla-auth-mode {query,bearer}` | `BUGZILLA_AUTH_MODE` | `query` | How to authenticate with Bugzilla: `query` sends `?api_key=<KEY>` (default, works with most instances); `bearer` sends `Authorization: ****** (required for Red Hat Bugzilla and similar) |
+| `--bugzilla-auth-mode {query,bearer}` | `BUGZILLA_AUTH_MODE` | `query` | How to authenticate with Bugzilla: `query` sends `?api_key=<KEY>` (default, works with most instances); `bearer` sends `Authorization: Bearer <KEY>` header (required for Red Hat Bugzilla and similar) |
 | `--read-only` | `MCP_READ_ONLY` | `False` | Disables all tools which can modify a bug. Works well in conjunction with `MCP_BUGZILLA_DISABLED_METHODS` |
 | `--download-dir <DIR>` | `BUGZILLA_DOWNLOAD_DIR` | `<tmpdir>/mcp-bugzilla` | Directory where `download_attachment` writes binary/oversized attachments. The default directory is created on first use and restricted to the owner (`0o700`); an explicit `output_dir` keeps its own permissions |
 
@@ -336,7 +336,7 @@ For MCP clients that launch the server as a subprocess and speak over stdin/stdo
 
 ```bash
 # Authenticated stdio
-BUGZILLA_API_KEY=your_api_key \\
+BUGZILLA_API_KEY=your_api_key \
   mcp-bugzilla --bugzilla-server https://bugzilla.opensuse.org --transport stdio
 
 # Anonymous stdio (public Bugzilla instances)
@@ -377,9 +377,9 @@ If the client omits the `ApiKey` header, the server falls back to the `--bugzill
 
 **Example with curl**:
 ```bash
-curl -X POST http://127.0.0.1:8000/mcp/ \\
-  -H "ApiKey: YOUR_API_KEY_HERE" \\
-  -H "Content-Type: application/json" \\
+curl -X POST http://127.0.0.1:8000/mcp/ \
+  -H "ApiKey: YOUR_API_KEY_HERE" \
+  -H "Content-Type: application/json" \
   -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "server_url_resource"}, "id": 1}'
 ```
 

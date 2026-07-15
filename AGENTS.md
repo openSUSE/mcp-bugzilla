@@ -76,7 +76,7 @@ Combined with `--read-only` to restrict to a specific read-only subset.
 - If no non-empty key is found from any source, access is **anonymous** (no credentials sent to Bugzilla).
 - When a key is present, the server forwards it to Bugzilla either as:
   - `?api_key=...` query parameter (`--bugzilla-auth-mode query`, default), or
-  - `Authorization: ****** header (`--bugzilla-auth-mode bearer`, required for Red Hat Bugzilla).
+  - `Authorization: Bearer <KEY>` header (`--bugzilla-auth-mode bearer`, required for Red Hat Bugzilla).
 
 ## Docker / Podman
 
