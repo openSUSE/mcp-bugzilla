@@ -138,8 +138,7 @@ def main():
 
     if args.use_auth_header:
         mcp_log.warning(
-            "--use-auth-header is deprecated; "
-            "use --bugzilla-auth-mode bearer instead."
+            "--use-auth-header is deprecated; use --bugzilla-auth-mode bearer instead."
         )
         if args.bugzilla_auth_mode == "query":
             args.bugzilla_auth_mode = "bearer"
