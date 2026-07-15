@@ -53,6 +53,7 @@ def _run_main(monkeypatch, argv, env=None):
 # Deprecated --api-key behaviour
 # ---------------------------------------------------------------------------
 
+
 def test_deprecated_api_key_http_warns_and_starts(monkeypatch, captured_mcp_log):
     """Using the deprecated --api-key flag must emit a deprecation warning."""
     mock_start = _run_main(
@@ -88,7 +89,8 @@ def test_new_bugzilla_api_key_http_no_warning(monkeypatch, captured_mcp_log):
     )
     mock_start.assert_called_once()
     deprecation_warnings = [
-        r for r in captured_mcp_log.records
+        r
+        for r in captured_mcp_log.records
         if r.levelno == logging.WARNING and "deprecated" in r.message.lower()
     ]
     assert deprecation_warnings == [], (
@@ -111,7 +113,9 @@ def test_deprecated_api_key_header_warns(monkeypatch, captured_mcp_log):
     )
     mock_start.assert_called_once()
     warnings = [r for r in captured_mcp_log.records if r.levelno == logging.WARNING]
-    assert any("--api-key-header" in r.message and "deprecated" in r.message for r in warnings), (
+    assert any(
+        "--api-key-header" in r.message and "deprecated" in r.message for r in warnings
+    ), (
         f"Expected --api-key-header deprecation warning, got: {[r.message for r in warnings]}"
     )
 
@@ -130,7 +134,9 @@ def test_deprecated_use_auth_header_warns(monkeypatch, captured_mcp_log):
     )
     mock_start.assert_called_once()
     warnings = [r for r in captured_mcp_log.records if r.levelno == logging.WARNING]
-    assert any("--use-auth-header" in r.message and "deprecated" in r.message for r in warnings), (
+    assert any(
+        "--use-auth-header" in r.message and "deprecated" in r.message for r in warnings
+    ), (
         f"Expected --use-auth-header deprecation warning, got: {[r.message for r in warnings]}"
     )
 
@@ -144,7 +150,9 @@ def test_deprecated_env_api_key_header_warns(monkeypatch, captured_mcp_log):
     )
     mock_start.assert_called_once()
     warnings = [r for r in captured_mcp_log.records if r.levelno == logging.WARNING]
-    assert any("--api-key-header" in r.message and "deprecated" in r.message for r in warnings), (
+    assert any(
+        "--api-key-header" in r.message and "deprecated" in r.message for r in warnings
+    ), (
         f"Expected MCP_API_KEY_HEADER deprecation warning, got: {[r.message for r in warnings]}"
     )
 
@@ -152,6 +160,7 @@ def test_deprecated_env_api_key_header_warns(monkeypatch, captured_mcp_log):
 # ---------------------------------------------------------------------------
 # Anonymous access (no key required)
 # ---------------------------------------------------------------------------
+
 
 def test_http_transport_without_any_key_starts(monkeypatch, captured_mcp_log):
     """http transport without any API key must start (anonymous access)."""
@@ -175,6 +184,7 @@ def test_stdio_transport_without_api_key_starts(monkeypatch, captured_mcp_log):
 # stdio + --host/--port rejection
 # ---------------------------------------------------------------------------
 
+
 def test_stdio_transport_with_host_exits(monkeypatch):
     monkeypatch.setattr(
         "sys.argv",
@@ -188,7 +198,12 @@ def test_stdio_transport_with_host_exits(monkeypatch):
             "0.0.0.0",
         ],
     )
-    for var in ("BUGZILLA_API_KEY", "MCP_TRANSPORT", "MCP_AUTH_HEADER", "MCP_API_KEY_HEADER"):
+    for var in (
+        "BUGZILLA_API_KEY",
+        "MCP_TRANSPORT",
+        "MCP_AUTH_HEADER",
+        "MCP_API_KEY_HEADER",
+    ):
         monkeypatch.delenv(var, raising=False)
 
     with patch("mcp_bugzilla.server.start") as mock_start, pytest.raises(SystemExit):

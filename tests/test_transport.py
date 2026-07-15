@@ -96,7 +96,9 @@ async def test_get_bz_anonymous_stdio_mode():
 @pytest.mark.asyncio
 async def test_get_bz_bearer_auth_mode():
     """--bugzilla-auth-mode bearer is passed through to the Bugzilla client."""
-    server.cli_args = _base_args(transport="stdio", bugzilla_api_key="k", bugzilla_auth_mode="bearer")
+    server.cli_args = _base_args(
+        transport="stdio", bugzilla_api_key="k", bugzilla_auth_mode="bearer"
+    )
     server.base_url = "https://bugzilla.example.com"
 
     async with server.get_bz(headers={}) as bz:

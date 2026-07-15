@@ -674,6 +674,7 @@ def test_safe_filename(name, expected):
 # Anonymous client (empty api_key)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_anonymous_client_sends_no_api_key_param():
     """A Bugzilla client created with an empty key must not send the api_key param."""
