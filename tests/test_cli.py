@@ -194,3 +194,13 @@ def test_stdio_transport_with_host_exits(monkeypatch):
     with patch("mcp_bugzilla.server.start") as mock_start, pytest.raises(SystemExit):
         main()
     mock_start.assert_not_called()
+
+
+def test_mcp_auth_header_defaults_to_none_when_omitted(monkeypatch):
+    """If --mcp-auth-header is omitted and env var is not set, it should default to None."""
+    from mcp_bugzilla import server
+    _run_main(
+        monkeypatch,
+        ["--bugzilla-server", "https://bugzilla.example.com", "--transport", "http"],
+    )
+    assert server.cli_args.mcp_auth_header is None
