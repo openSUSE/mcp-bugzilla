@@ -51,32 +51,38 @@ MAX_FORCED_INLINE_BYTES: int = 1024 * 1024
 async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
     """Dependency to get the current Bugzilla client.
 
-    For http transport, the API key is read per-request from the configured header.
-    For stdio transport, there is no HTTP request scope, so the key comes from
-    the CLI flag / BUGZILLA_API_KEY env var captured at startup.
+    For http transport, the API key is read per-request from the configured header
+    (--mcp-auth-header / MCP_AUTH_HEADER); if absent, falls back to the static
+    --bugzilla-api-key / BUGZILLA_API_KEY value.
+    For stdio transport, there is no HTTP request scope, so the key comes only
+    from --bugzilla-api-key / BUGZILLA_API_KEY captured at startup.
+    If no non-empty key is found from any source, access is anonymous.
     """
     mcp_log.debug("api_key: Checking")
 
     transport = getattr(cli_args, "transport", "http")
 
     if transport == "stdio":
-        api_key_value = getattr(cli_args, "api_key", None)
-        if not api_key_value:
-            # Defense in depth; main() already validates this at startup.
-            raise ValidationError(
-                "stdio transport requires --api-key or BUGZILLA_API_KEY env var"
-            )
+        # Static key only; anonymous if unset.
+        api_key_value = getattr(cli_args, "bugzilla_api_key", None) or ""
     else:
-        api_key_header = getattr(cli_args, "api_key_header", "ApiKey")
-        api_key_value = headers.get(api_key_header.lower())
+        # Per-request header is the primary source for http transport.
+        mcp_auth_header = getattr(cli_args, "mcp_auth_header", "ApiKey")
+        api_key_value = headers.get(mcp_auth_header.lower()) or ""
+        # Fall back to the static key if the client did not send one.
         if not api_key_value:
-            raise ValidationError(f"`{api_key_header}` header is required")
+            api_key_value = getattr(cli_args, "bugzilla_api_key", None) or ""
 
-    mcp_log.debug("api_key: Found")
+    if api_key_value:
+        mcp_log.debug("api_key: Found")
+    else:
+        mcp_log.debug("api_key: Not provided — using anonymous access")
+
+    use_bearer = getattr(cli_args, "bugzilla_auth_mode", "query") == "bearer"
     bz = Bugzilla(
         url=base_url,
         api_key=api_key_value,
-        use_auth_header=getattr(cli_args, "use_auth_header", False),
+        use_auth_header=use_bearer,
     )
     try:
         yield bz

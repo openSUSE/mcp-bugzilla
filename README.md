@@ -189,7 +189,7 @@ The server provides the following tools for interacting with Bugzilla:
 
 - Python 3.13
 - A Bugzilla instance with REST API access
-- A Bugzilla user account with an API key
+- A Bugzilla user account with an API key *(optional: public instances support anonymous access)*
 - Network access to the Bugzilla server
 
 ## Installation
@@ -270,15 +270,26 @@ The `mcp-bugzilla` command supports the following options:
 | `--transport {http,stdio}` | `MCP_TRANSPORT` | `http` | Transport for the MCP server. `stdio` is for direct subprocess launches by an MCP client; `http` exposes a network endpoint |
 | `--host <ADDRESS>` | `MCP_HOST` | `127.0.0.1` | Host address for the MCP server to listen on (http transport only) |
 | `--port <PORT>` | `MCP_PORT` | `8000` | Port for the MCP server to listen on (http transport only) |
-| `--api-key <KEY>` | `BUGZILLA_API_KEY` | *Required for stdio* | Bugzilla API key. Required with `--transport stdio` (no HTTP headers exist there). Ignored for `--transport http`, where clients send the key per-request via the API key header |
-| `--api-key-header <HEADER_NAME>` | `MCP_API_KEY_HEADER` | `ApiKey` | HTTP header name for the Bugzilla API key (http transport only) |
-| `--use-auth-header` | `USE_AUTH_HEADER` | `False` | Use `Authorization: Bearer` header instead of `api_key` query parameter |
+| `--mcp-auth-header <HEADER>` | `MCP_AUTH_HEADER` | `ApiKey` | HTTP header name that clients use to send the Bugzilla API key to this MCP server (http transport only). If the client omits this header, access falls back to `--bugzilla-api-key` or is anonymous |
+| `--bugzilla-api-key <KEY>` | `BUGZILLA_API_KEY` | *none* | Static Bugzilla API key. Optional: if omitted and not provided per-request via `--mcp-auth-header` (http), access is **anonymous**. For `--transport stdio` this is the only source of the key |
+| `--bugzilla-auth-mode {query,bearer}` | `BUGZILLA_AUTH_MODE` | `query` | How to authenticate with Bugzilla: `query` sends `?api_key=<KEY>` (default, works with most instances); `bearer` sends `Authorization: ****** (required for Red Hat Bugzilla and similar) |
 | `--read-only` | `MCP_READ_ONLY` | `False` | Disables all tools which can modify a bug. Works well in conjunction with `MCP_BUGZILLA_DISABLED_METHODS` |
 | `--download-dir <DIR>` | `BUGZILLA_DOWNLOAD_DIR` | `<tmpdir>/mcp-bugzilla` | Directory where `download_attachment` writes binary/oversized attachments. The default directory is created on first use and restricted to the owner (`0o700`); an explicit `output_dir` keeps its own permissions |
 
 **Note**: `--host` and `--port` are rejected with an error when used together with `--transport stdio`.
 
 **Note**: Command-line arguments take precedence over environment variables.
+
+#### Deprecated Arguments
+
+The following arguments are **deprecated** and will be removed in a future release. They continue to work
+and emit a warning in the logs when used. Migrate to the replacements shown:
+
+| Deprecated | Replacement | Notes |
+|------------|-------------|-------|
+| `--api-key` / `BUGZILLA_API_KEY` (old semantics) | `--bugzilla-api-key` / `BUGZILLA_API_KEY` | Same env var; the new arg makes the intent explicit. Previously required for stdio; now optional (anonymous if absent) |
+| `--api-key-header` / `MCP_API_KEY_HEADER` | `--mcp-auth-header` / `MCP_AUTH_HEADER` | Clarifies that this controls the *inbound* client→MCP header |
+| `--use-auth-header` | `--bugzilla-auth-mode bearer` | Replaces a boolean flag with an explicit mode choice |
 
 ### Environment Variables
 
@@ -288,7 +299,9 @@ You can configure the server using environment variables instead of command-line
 export BUGZILLA_SERVER=https://bugzilla.example.com
 export MCP_HOST=127.0.0.1
 export MCP_PORT=8000
-export MCP_API_KEY_HEADER=ApiKey
+export MCP_AUTH_HEADER=ApiKey
+export BUGZILLA_API_KEY=your_api_key   # optional; omit for anonymous access
+export BUGZILLA_AUTH_MODE=query        # or "bearer" for Red Hat Bugzilla
 export LOG_LEVEL=INFO  # Optional: DEBUG, INFO, WARNING, ERROR, CRITICAL
 export MCP_READ_ONLY=true  # Optional: set to true to disable write operations
 # Selective Disabling Tools (Optional)
@@ -319,11 +332,15 @@ The server will start listening on `http://127.0.0.1:8000/mcp/` by default.
 
 #### Stdio transport
 
-For MCP clients that launch the server as a subprocess and speak over stdin/stdout (e.g. Claude Desktop-style configs), use `--transport stdio`. Because there is no per-request HTTP scope, the Bugzilla API key must be provided up front via `BUGZILLA_API_KEY` or `--api-key`:
+For MCP clients that launch the server as a subprocess and speak over stdin/stdout (e.g. Claude Desktop-style configs), use `--transport stdio`. To authenticate with Bugzilla, provide the API key via `BUGZILLA_API_KEY` or `--bugzilla-api-key`. If the key is omitted, access is **anonymous**:
 
 ```bash
-BUGZILLA_API_KEY=your_api_key \
+# Authenticated stdio
+BUGZILLA_API_KEY=your_api_key \\
   mcp-bugzilla --bugzilla-server https://bugzilla.opensuse.org --transport stdio
+
+# Anonymous stdio (public Bugzilla instances)
+mcp-bugzilla --bugzilla-server https://bugzilla.opensuse.org --transport stdio --read-only
 ```
 
 `--host` and `--port` are not valid in stdio mode and will cause the server to exit with an error.
@@ -343,65 +360,56 @@ http://127.0.0.1:8000/mcp/
 
 ### Authentication
 
-**Required**: All requests must include a Bugzilla API key in the HTTP headers.
+Authentication is **optional**. If no API key is provided, the server accesses Bugzilla anonymously, which works for public read-only operations on Bugzilla instances that allow anonymous access.
 
-1. **Generate an API Key**:
-   - Log in to your Bugzilla instance
-   - Navigate to your user preferences
-   - Go to the "API Keys" section
-   - Generate a new API key
-   - Copy the API key
+#### Sending the API key from the MCP client (http transport)
 
-2. **Send the API Key**:
-   Include the API key in the HTTP request header. By default, the header name is `ApiKey`:
+Include the Bugzilla API key in the HTTP request header sent to this MCP server. By default, the header name is `ApiKey` (configurable via `--mcp-auth-header` / `MCP_AUTH_HEADER`):
 
-   ```http
-   POST /mcp/ HTTP/1.1
-   Host: 127.0.0.1:8000
-   ApiKey: YOUR_API_KEY_HERE
-   Content-Type: application/json
-   ```
+```http
+POST /mcp/ HTTP/1.1
+Host: 127.0.0.1:8000
+ApiKey: YOUR_API_KEY_HERE
+Content-Type: application/json
+```
 
-   You can customize the header name using the `--api-key-header` argument or `MCP_API_KEY_HEADER` environment variable.
+If the client omits the `ApiKey` header, the server falls back to the `--bugzilla-api-key` / `BUGZILLA_API_KEY` static key, or uses anonymous access if that is also unset.
 
-3. **Example with curl**:
-   ```bash
-   curl -X POST http://127.0.0.1:8000/mcp/ \
-     -H "ApiKey: YOUR_API_KEY_HERE" \
-     -H "Content-Type: application/json" \
-     -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "server_url_resource"}, "id": 1}'
-   ```
+**Example with curl**:
+```bash
+curl -X POST http://127.0.0.1:8000/mcp/ \\
+  -H "ApiKey: YOUR_API_KEY_HERE" \\
+  -H "Content-Type: application/json" \\
+  -d '{"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "server_url_resource"}, "id": 1}'
+```
 
-### Authentication Methods
+### MCP → Bugzilla Authentication Modes
 
-This server supports two authentication methods for communicating with Bugzilla:
+The `--bugzilla-auth-mode` argument controls how this server authenticates with Bugzilla:
 
-#### Method 1: Query Parameter (Default)
+#### Mode `query` (Default)
 
-By default, the server sends the API key as a query parameter in the URL:
+Sends the API key as the `api_key` query parameter in every Bugzilla REST request:
 ```bash
 mcp-bugzilla --bugzilla-server https://bugzilla.example.com
+# Equivalent: --bugzilla-auth-mode query
 ```
 
 This works with standard Bugzilla instances (Mozilla Bugzilla, openSUSE Bugzilla, etc.).
 
-#### Method 2: Authorization Header (for enterprise instances)
+#### Mode `bearer` (for enterprise instances)
 
-Some Bugzilla instances (such as Red Hat Bugzilla) require the API key to be sent via the `Authorization: Bearer` header instead of as a query parameter. Use the `--use-auth-header` flag for these instances:
+Some Bugzilla instances (such as Red Hat Bugzilla) require the API key to be sent via the `Authorization: Bearer` header. Use `--bugzilla-auth-mode bearer` for these instances:
 ```bash
-mcp-bugzilla --bugzilla-server https://bugzilla.redhat.com --use-auth-header
+mcp-bugzilla --bugzilla-server https://bugzilla.redhat.com --bugzilla-auth-mode bearer
 ```
 
-**When to use `--use-auth-header`:**
+**When to use `bearer` mode:**
 - Red Hat Bugzilla (bugzilla.redhat.com)
 - Other enterprise Bugzilla instances that reject `api_key` query parameters
 - Bugzilla instances with strict authentication requirements
 
-**How it works:**
-- **With `--use-auth-header`**: Sends `Authorization: Bearer YOUR_API_KEY` header to Bugzilla
-- **Without `--use-auth-header`** (default): Sends `?api_key=YOUR_API_KEY` query parameter to Bugzilla
-
-**Note**: The `--api-key-header` option controls which header name the *MCP server* expects from *clients*, while `--use-auth-header` controls how the *MCP server* authenticates with *Bugzilla*. These are independent settings.
+**Note**: `--mcp-auth-header` controls which header the *MCP clients* use to pass the key *to this server*; `--bugzilla-auth-mode` controls how *this server* forwards it *to Bugzilla*. These are independent settings.
 
 ### MCP Client Integration
 
@@ -432,7 +440,7 @@ All tools return JSON responses following the MCP protocol. Successful responses
 
 The server provides detailed error messages for common issues:
 
-- **Missing API Key**: Returns `ValidationError` if the required API key header is missing
+- **Authentication**: API key is optional; if absent, access is anonymous. If Bugzilla returns 401, your key may be invalid or the instance requires authentication.
 - **Invalid Bug ID**: Returns `ToolError` with details if a bug ID doesn't exist
 - **API Errors**: Returns `ToolError` with the HTTP status code and error message from Bugzilla
 - **Network Errors**: Returns `ToolError` for connection or timeout issues
@@ -530,16 +538,15 @@ page2 = bugs_quicksearch("status:NEW", limit=50, offset=50)
 
 ### Example 6: Using with Red Hat Bugzilla
 
-Red Hat Bugzilla requires Authorization header authentication:
+Red Hat Bugzilla requires `Authorization: Bearer` authentication instead of the default `api_key` query parameter. Use `--bugzilla-auth-mode bearer`:
 ```bash
-# Start the server with --use-auth-header flag
 mcp-bugzilla \
   --bugzilla-server https://bugzilla.redhat.com \
-  --use-auth-header \
+  --bugzilla-auth-mode bearer \
   --host 127.0.0.1 \
   --port 8000
 
-# Client connects normally - the flag only affects server-to-Bugzilla communication
+# Client sends the key in the ApiKey header as usual
 curl -X POST http://127.0.0.1:8000/mcp/ \
   -H "ApiKey: YOUR_API_KEY_HERE" \
   -H "Content-Type: application/json" \
@@ -591,12 +598,12 @@ mcp-bugzilla --bugzilla-server https://bugzilla.example.com
 
 ### Authentication Errors
 
-**Issue**: Receiving `ValidationError: ApiKey header is required`
+**Issue**: Receiving 401 Unauthorized from Bugzilla
 
 **Solution**: 
-1. Ensure you're sending the API key in the correct HTTP header (default: `ApiKey`)
+1. Ensure you're sending the API key in the correct HTTP header to the MCP server (default: `ApiKey`, or configure with `--mcp-auth-header`)
 2. Verify the API key is valid and not expired
-3. Check that the header name matches your server configuration
+3. Check that `--bugzilla-auth-mode` matches what the Bugzilla instance expects (`query` for standard instances, `bearer` for Red Hat Bugzilla)
 
 ### API Errors
 

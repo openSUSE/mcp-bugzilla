@@ -30,17 +30,48 @@ def main():
         default=int(os.getenv("MCP_PORT", "8000")),
         help="Port for the MCP server to listen on, Defaults to 8000 or MCP_PORT environment variable.",
     )
+
+    # --- Inbound auth: client -> MCP ---
+    parser.add_argument(
+        "--mcp-auth-header",
+        type=str,
+        default=os.getenv("MCP_AUTH_HEADER", "ApiKey"),
+        help="HTTP header name that clients use to send the Bugzilla API key to this MCP server (http transport only). Defaults to 'ApiKey' or MCP_AUTH_HEADER environment variable. Replaces --api-key-header.",
+    )
+
+    # --- Outbound auth: MCP -> Bugzilla ---
+    parser.add_argument(
+        "--bugzilla-api-key",
+        type=str,
+        default=os.getenv("BUGZILLA_API_KEY"),
+        help="Bugzilla API key. If omitted (and not provided per-request via --mcp-auth-header for http transport), Bugzilla access is anonymous. For --transport stdio this is the only source of the key. Environment variable BUGZILLA_API_KEY can also be used. Replaces --api-key.",
+    )
+    parser.add_argument(
+        "--bugzilla-auth-mode",
+        type=str,
+        choices=["query", "bearer"],
+        default=os.getenv("BUGZILLA_AUTH_MODE", "query"),
+        help="How to authenticate with Bugzilla: 'query' (default) sends the API key as the api_key query parameter; 'bearer' sends it as an Authorization: ****** (required for some Bugzilla instances such as Red Hat Bugzilla). Environment variable BUGZILLA_AUTH_MODE can also be used. Replaces --use-auth-header.",
+    )
+
+    # --- Deprecated args kept for backward compatibility ---
+    # TODO: Remove deprecated args when deprecation period expires.
     parser.add_argument(
         "--api-key-header",
         type=str,
-        default=os.getenv("MCP_API_KEY_HEADER", "ApiKey"),
-        help="HTTP header for clients to send the Bugzilla API key. Defaults to 'ApiKey' or MCP_API_KEY_HEADER environment variable.",
+        default=os.getenv("MCP_API_KEY_HEADER"),
+        help="[DEPRECATED] Use --mcp-auth-header / MCP_AUTH_HEADER instead.",
     )
-
+    parser.add_argument(
+        "--api-key",
+        type=str,
+        default=None,
+        help="[DEPRECATED] Use --bugzilla-api-key / BUGZILLA_API_KEY instead.",
+    )
     parser.add_argument(
         "--use-auth-header",
         action="store_true",
-        help="Use Authorization: Bearer header instead of api_key query parameter (required for some Bugzilla instances)",
+        help="[DEPRECATED] Use --bugzilla-auth-mode bearer instead.",
     )
 
     parser.add_argument(
@@ -58,12 +89,6 @@ def main():
         help="Transport for the MCP server: 'http' (default) or 'stdio'. Environment variable MCP_TRANSPORT can also be used.",
     )
 
-    parser.add_argument(
-        "--api-key",
-        type=str,
-        default=os.getenv("BUGZILLA_API_KEY"),
-        help="Bugzilla API key. Required for --transport stdio (no HTTP headers exist there). Environment variable BUGZILLA_API_KEY can also be used. Ignored for --transport http (clients send the key per-request via the API key header).",
-    )
     parser.add_argument(
         "--download-dir",
         type=str,
@@ -83,8 +108,37 @@ def main():
         )
         sys.exit(1)
 
-    # Stdio transport has no HTTP request scope, so --host/--port are meaningless
-    # and the API key must be provided up-front (env var or CLI flag).
+    # TODO: Remove deprecated arg handling when deprecation period expires.
+    # Map deprecated args to their replacements, with a visible warning.
+    _new_auth_header_set = os.getenv("MCP_AUTH_HEADER") or any(
+        tok == "--mcp-auth-header" or tok.startswith("--mcp-auth-header=")
+        for tok in sys.argv[1:]
+    )
+    if args.api_key_header is not None:
+        mcp_log.warning(
+            "--api-key-header / MCP_API_KEY_HEADER is deprecated; "
+            "use --mcp-auth-header / MCP_AUTH_HEADER instead."
+        )
+        if not _new_auth_header_set:
+            args.mcp_auth_header = args.api_key_header
+
+    if args.api_key is not None:
+        mcp_log.warning(
+            "--api-key is deprecated; "
+            "use --bugzilla-api-key / BUGZILLA_API_KEY instead."
+        )
+        if args.bugzilla_api_key is None:
+            args.bugzilla_api_key = args.api_key
+
+    if args.use_auth_header:
+        mcp_log.warning(
+            "--use-auth-header is deprecated; "
+            "use --bugzilla-auth-mode bearer instead."
+        )
+        if args.bugzilla_auth_mode == "query":
+            args.bugzilla_auth_mode = "bearer"
+
+    # Stdio transport has no HTTP request scope, so --host/--port are meaningless.
     # We sniff sys.argv because argparse can't natively tell a default value from
     # an explicit pass (env-var defaults muddy the comparison further).
     if args.transport == "stdio":
@@ -97,19 +151,6 @@ def main():
         )
         if explicit_host_or_port:
             parser.error("--host/--port are not valid with --transport stdio")
-        if not args.api_key:
-            parser.error(
-                "--transport stdio requires --api-key or the BUGZILLA_API_KEY environment variable"
-            )
-    elif args.transport == "http" and args.api_key:
-        # In http mode the server takes the API key from each client's per-request
-        # header; the startup-time --api-key / BUGZILLA_API_KEY is unused. Warn so
-        # the user cleans the config and doesn't think they're authenticating.
-        mcp_log.warning(
-            "--api-key / BUGZILLA_API_KEY is set but ignored with --transport http "
-            "(clients send the key per-request via the API key header). "
-            "Unset it to clean the config."
-        )
 
     server.cli_args = args
     server.start()
