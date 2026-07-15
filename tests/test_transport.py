@@ -76,7 +76,9 @@ async def test_get_bz_ignores_header_when_mcp_auth_header_is_none():
 @pytest.mark.asyncio
 async def test_get_bz_ignores_header_and_falls_back_to_static_key_when_mcp_auth_header_is_none():
     """When mcp_auth_header is None (i.e. disabled), any client headers should be ignored, and we fall back to static key."""
-    server.cli_args = _base_args(transport="http", mcp_auth_header=None, bugzilla_api_key="static-key")
+    server.cli_args = _base_args(
+        transport="http", mcp_auth_header=None, bugzilla_api_key="static-key"
+    )
     server.base_url = "https://bugzilla.example.com"
 
     async with server.get_bz(headers={"apikey": "should-be-ignored"}) as bz:
