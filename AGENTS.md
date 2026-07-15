@@ -29,7 +29,7 @@ Optional flags:
 |------|-------------|
 | `--host` | Listen address (default: `127.0.0.1`) |
 | `--port` | Listen port (default: `8000`) |
-| `--mcp-auth-header` | Header name for client API key (default: `ApiKey`; env: `MCP_AUTH_HEADER`) |
+| `--mcp-auth-header` | Header name for client API key (disabled by default; env: `MCP_AUTH_HEADER`) |
 | `--bugzilla-api-key` | Static Bugzilla API key; if omitted access is anonymous (env: `BUGZILLA_API_KEY`) |
 | `--bugzilla-auth-mode` | How to authenticate with Bugzilla: `query` (default) or `bearer` for `Authorization: Bearer` (env: `BUGZILLA_AUTH_MODE`) |
 | `--read-only` | Disable all write tools |
@@ -71,7 +71,7 @@ Combined with `--read-only` to restrict to a specific read-only subset.
 
 ## Authentication Flow
 
-- Clients (http transport) send a Bugzilla API key in an HTTP header (default header name: `ApiKey`, configurable via `--mcp-auth-header`).
+- Clients (http transport) send a Bugzilla API key in an HTTP header (only enabled when `--mcp-auth-header` or `MCP_AUTH_HEADER` is explicitly configured).
 - For stdio transport, the key comes from `--bugzilla-api-key` / `BUGZILLA_API_KEY`.
 - If no non-empty key is found from any source, access is **anonymous** (no credentials sent to Bugzilla).
 - When a key is present, the server forwards it to Bugzilla either as:

@@ -66,9 +66,12 @@ async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
         # Static key only; anonymous if unset.
         api_key_value = getattr(cli_args, "bugzilla_api_key", None) or ""
     else:
-        # Per-request header is the primary source for http transport.
-        mcp_auth_header = getattr(cli_args, "mcp_auth_header", "ApiKey")
-        api_key_value = headers.get(mcp_auth_header.lower()) or ""
+        # Per-request header is the primary source for http transport if set.
+        mcp_auth_header = getattr(cli_args, "mcp_auth_header", None)
+        if mcp_auth_header:
+            api_key_value = headers.get(mcp_auth_header.lower()) or ""
+        else:
+            api_key_value = ""
         # Fall back to the static key if the client did not send one.
         if not api_key_value:
             api_key_value = getattr(cli_args, "bugzilla_api_key", None) or ""

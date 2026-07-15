@@ -209,3 +209,36 @@ def test_stdio_transport_with_host_exits(monkeypatch):
     with patch("mcp_bugzilla.server.start") as mock_start, pytest.raises(SystemExit):
         main()
     mock_start.assert_not_called()
+
+
+def test_mcp_auth_header_defaults_to_none_when_omitted(monkeypatch):
+    """If --mcp-auth-header is omitted and env var is not set, it should default to None."""
+    from mcp_bugzilla import server
+
+    _run_main(
+        monkeypatch,
+        ["--bugzilla-server", "https://bugzilla.example.com", "--transport", "http"],
+    )
+    assert server.cli_args.mcp_auth_header is None
+
+
+def test_invalid_bugzilla_auth_mode_env_exits(monkeypatch, captured_mcp_log):
+    """If BUGZILLA_AUTH_MODE env var has an invalid value, main() must log a critical error and exit."""
+    with pytest.raises(SystemExit) as exc_info:
+        _run_main(
+            monkeypatch,
+            [
+                "--bugzilla-server",
+                "https://bugzilla.example.com",
+                "--transport",
+                "http",
+            ],
+            env={"BUGZILLA_AUTH_MODE": "invalid_mode"},
+        )
+    assert exc_info.value.code == 1
+    critical_logs = [
+        r for r in captured_mcp_log.records if r.levelno == logging.CRITICAL
+    ]
+    assert any("Invalid --bugzilla-auth-mode" in r.message for r in critical_logs), (
+        f"Expected critical log for invalid bugzilla-auth-mode, got: {[r.message for r in critical_logs]}"
+    )

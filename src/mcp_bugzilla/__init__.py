@@ -35,8 +35,8 @@ def main():
     parser.add_argument(
         "--mcp-auth-header",
         type=str,
-        default=os.getenv("MCP_AUTH_HEADER", "ApiKey"),
-        help="HTTP header name that clients use to send the Bugzilla API key to this MCP server (http transport only). Defaults to 'ApiKey' or MCP_AUTH_HEADER environment variable. Replaces --api-key-header.",
+        default=os.getenv("MCP_AUTH_HEADER"),
+        help="HTTP header name that clients use to send the Bugzilla API key to this MCP server (http transport only). Defaults to MCP_AUTH_HEADER environment variable. If neither is set, inbound header authentication is disabled. Replaces --api-key-header.",
     )
 
     # --- Outbound auth: MCP -> Bugzilla ---
@@ -105,6 +105,12 @@ def main():
     if args.bugzilla_server is None:
         mcp_log.critical(
             "Error: --bugzilla-server argument or BUGZILLA_SERVER environment variable must be set. Exiting."
+        )
+        sys.exit(1)
+
+    if args.bugzilla_auth_mode not in ["query", "bearer"]:
+        mcp_log.critical(
+            f"Error: Invalid --bugzilla-auth-mode '{args.bugzilla_auth_mode}'. Must be 'query' or 'bearer'. Exiting."
         )
         sys.exit(1)
 
