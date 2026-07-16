@@ -290,8 +290,9 @@ class Bugzilla:
         """Perform a quicksearch"""
         # Quicksearch isn't a direct REST endpoint usually, but /bug with quicksearch param works
 
+        quicksearch_query = f"{status} {query}" if status else query
         params = {
-            "quicksearch": status + " " + query,
+            "quicksearch": quicksearch_query,
             "include_fields": include_fields,
             "limit": limit,
             "offset": offset,
