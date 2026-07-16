@@ -25,7 +25,7 @@ from .mcp_utils import Bugzilla, is_textual, mcp_log, safe_filename
 mcp = FastMCP("Bugzilla")
 
 # Global dict to hold command-line arguments, populated by main() in __init__.py
-cli_args: Namespace
+cli_args: Namespace = Namespace()
 
 # Global variable to hold the base_url, set by the start() function
 base_url: str = ""
@@ -89,6 +89,9 @@ async def bug_info(bug_ids: set[int], bz: Bugzilla = Depends(get_bz)) -> dict[st
     """Returns the entire information for one or more bugzilla bug ids."""
 
     mcp_log.info(f"[LLM-REQ] bug_info(ids={bug_ids})")
+
+    if not bug_ids:
+        raise ToolError("No bug IDs provided")
 
     try:
         result = await bz.bug_info(bug_ids)
