@@ -668,3 +668,64 @@ def test_is_textual(content_type, expected):
 )
 def test_safe_filename(name, expected):
     assert safe_filename(name, 7) == expected
+
+
+# ---------------------------------------------------------------------------
+# Anonymous client (empty api_key)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_anonymous_client_sends_no_api_key_param():
+    """A Bugzilla client created with an empty key must not send the api_key param."""
+    anon = Bugzilla(MOCK_URL, api_key="")
+    try:
+        async with respx.mock(base_url=MOCK_URL) as respx_mock:
+            route = respx_mock.get("/rest/bug/1").mock(
+                return_value=Response(200, json={"bugs": [{"id": 1}]})
+            )
+            await anon.bug_info({1})
+            assert "api_key" not in route.calls.last.request.url.params
+    finally:
+        await anon.close()
+
+
+@pytest.mark.asyncio
+async def test_anonymous_client_sends_no_auth_header():
+    """A Bugzilla client created with an empty key must not send Authorization header."""
+    anon = Bugzilla(MOCK_URL, api_key="")
+    try:
+        assert "Authorization" not in anon.client.headers
+    finally:
+        await anon.close()
+
+
+@pytest.mark.asyncio
+async def test_authenticated_client_sends_api_key_param():
+    """A Bugzilla client with a non-empty key must send api_key as query param by default."""
+    client = Bugzilla(MOCK_URL, api_key="mykey")
+    try:
+        async with respx.mock(base_url=MOCK_URL) as respx_mock:
+            route = respx_mock.get("/rest/bug/1").mock(
+                return_value=Response(200, json={"bugs": [{"id": 1}]})
+            )
+            await client.bug_info({1})
+            assert route.calls.last.request.url.params["api_key"] == "mykey"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_bearer_client_sends_auth_header_not_param():
+    """A Bugzilla client in bearer mode must send Authorization header, not api_key param."""
+    client = Bugzilla(MOCK_URL, api_key="bearerkey", use_auth_header=True)
+    try:
+        async with respx.mock(base_url=MOCK_URL) as respx_mock:
+            route = respx_mock.get("/rest/bug/1").mock(
+                return_value=Response(200, json={"bugs": [{"id": 1}]})
+            )
+            await client.bug_info({1})
+            assert "api_key" not in route.calls.last.request.url.params
+            assert "authorization" in dict(route.calls.last.request.headers)
+    finally:
+        await client.close()
