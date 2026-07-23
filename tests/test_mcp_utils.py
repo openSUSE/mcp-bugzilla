@@ -327,14 +327,14 @@ async def test_quicksearch(bz_client):
 
         # Test with explicit arguments (mandatory in mcp_utils)
         search_env = await bz_client.quicksearch(
-            "product:Foo", status="ALL", include_fields="id,product", limit=50, offset=0
+            "product:Foo", include_fields="id,product", limit=50, offset=0
         )
         assert len(search_env["bugs"]) == 2
 
         # Verify call arguments
         assert route.called
         params = route.calls.last.request.url.params
-        assert params["quicksearch"] == "ALL product:Foo"
+        assert params["quicksearch"] == "product:Foo"
         assert params["limit"] == "50"
         assert params["offset"] == "0"
         assert "include_fields" in params
