@@ -285,14 +285,13 @@ class Bugzilla:
         return data
 
     async def quicksearch(
-        self, query: str, status: str, include_fields: str, limit: int, offset: int
+        self, query: str, include_fields: str, limit: int, offset: int
     ) -> dict[str, Any]:
         """Perform a quicksearch"""
         # Quicksearch isn't a direct REST endpoint usually, but /bug with quicksearch param works
 
-        quicksearch_query = f"{status} {query}" if status else query
         params = {
-            "quicksearch": quicksearch_query,
+            "quicksearch": query,
             "include_fields": include_fields,
             "limit": limit,
             "offset": offset,

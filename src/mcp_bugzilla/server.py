@@ -17,7 +17,7 @@ from typing import Any, List, Literal, Optional, TypedDict, Union
 
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
-from fastmcp.exceptions import PromptError, ResourceError, ToolError, ValidationError
+from fastmcp.exceptions import PromptError, ResourceError, ToolError
 
 from .mcp_utils import Bugzilla, is_textual, mcp_log, safe_filename
 
@@ -185,7 +185,6 @@ async def add_comment(
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bugs_quicksearch(
     query: str,
-    status: Optional[str] = "ALL",
     include_fields: Optional[
         str
     ] = "id,product,component,assigned_to,status,resolution,summary,last_change_time",
@@ -201,14 +200,20 @@ async def bugs_quicksearch(
     """
 
     mcp_log.info(
-        f"[LLM-REQ] bugs_quicksearch(query='{query}',status='{status}', include_fields='{include_fields}', limit={limit}, offset={offset})"
+        f"[LLM-REQ] bugs_quicksearch(query='{query}', include_fields='{include_fields}', limit={limit}, offset={offset})"
     )
 
     try:
         # We moved quicksearch logic to mcp_utils
-        envelope = await bz.quicksearch(query, status, include_fields, limit, offset)
+        envelope = await bz.quicksearch(
+            query,
+            include_fields
+            or "id,product,component,assigned_to,status,resolution,summary,last_change_time",
+            limit or 50,
+            offset or 0,
+        )
 
-        mcp_log.info(f"[LLM-RES] Returning quicksearch envelope")
+        mcp_log.info("[LLM-RES] Returning quicksearch envelope")
         return envelope
 
     except Exception as e:
