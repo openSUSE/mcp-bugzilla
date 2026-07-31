@@ -20,6 +20,7 @@ This release is same as previous one but bumped due to premature pypi release
 
 ### Fixed
 - Handle empty status, missing bug IDs, and uninitialized `cli_args` in various code paths
+- Fix all ruff format / lint errors
 
 ### Chore
 - Bump `mcp` 1.26.0 → 1.28.1
@@ -27,7 +28,7 @@ This release is same as previous one but bumped due to premature pypi release
 - Bump `httpx-retries` 0.5.0 → 0.6.0
 
 ### CI
-- Fix ruff lint action
+- Bump ruff lint action
 - Fix auto-merge failure for dependabot PRs
 
 ## [v0.17.0] - 2026-07-27
