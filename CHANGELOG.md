@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [v0.18.0] - 2026-07-31
+
+This release is same as previous one but bumped due to premature pypi release 
+
+### Added
+- Anonymous access — the server now works without any Bugzilla API key (no credentials sent to Bugzilla)
+- Docker image now available from openSUSE registry. Check readme for instructions
+
+### Changed
+- CLI refactored for clarity: `--api-key-header` → `--mcp-auth-header`, `--api-key` → `--bugzilla-api-key`, `--use-auth-header` → `--bugzilla-auth-mode bearer`.  Old flags still work but log a deprecation warning.
+- `bugs_quicksearch` tool: removed `status` field from the tool signature
+
+### Fixed
+- Handle empty status, missing bug IDs, and uninitialized `cli_args` in various code paths
+
+### Chore
+- Bump `mcp` 1.26.0 → 1.28.1
+- Bump `fastmcp` 3.4.2 → 3.4.5
+- Bump `httpx-retries` 0.5.0 → 0.6.0
+
+### CI
+- Fix ruff lint action
+- Fix auto-merge failure for dependabot PRs
+
 ## [v0.17.0] - 2026-07-27
 
 ### Added

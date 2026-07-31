@@ -257,6 +257,36 @@ mcp-bugzilla --bugzilla-server https://bugzilla.example.com
 
    This will start the HTTP server at `http://127.0.0.1:8000/mcp/`.
 
+### Docker
+
+Pull the pre-built image from the openSUSE registry:
+
+```bash
+docker pull registry.opensuse.org/opensuse/mcp-bugzilla:latest
+```
+
+Run the container:
+
+```bash
+docker run -p 8000:8000 \
+  registry.opensuse.org/opensuse/mcp-bugzilla:latest \
+  --bugzilla-server https://bugzilla.example.com \
+  --host 0.0.0.0 \
+  --port 8000
+```
+
+You can also pass configuration via environment variables:
+
+```bash
+docker run -p 8000:8000 \
+  -e BUGZILLA_SERVER=https://bugzilla.example.com \
+  -e MCP_HOST=0.0.0.0 \
+  -e MCP_PORT=8000 \
+  registry.opensuse.org/opensuse/mcp-bugzilla:latest
+```
+
+Podman works identically — just substitute `docker` with `podman`.
+
 ## Configuration
 
 ### Command-Line Arguments
