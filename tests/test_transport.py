@@ -10,21 +10,21 @@ from mcp_bugzilla import server
 
 def _base_args(**overrides):
     """Build a Namespace with all attrs server.start() / get_bz() may read."""
-    defaults = dict(
-        bugzilla_server="https://bugzilla.example.com",
-        host="127.0.0.1",
-        port=8000,
+    defaults = {
+        "bugzilla_server": "https://bugzilla.example.com",
+        "host": "127.0.0.1",
+        "port": 8000,
         # New primary auth args
-        mcp_auth_header="ApiKey",
-        bugzilla_api_key=None,
-        bugzilla_auth_mode="query",
+        "mcp_auth_header": "ApiKey",
+        "bugzilla_api_key": None,
+        "bugzilla_auth_mode": "query",
         # Deprecated args kept for backward compatibility
-        api_key_header=None,
-        use_auth_header=False,
-        api_key=None,
-        read_only=False,
-        transport="http",
-    )
+        "api_key_header": None,
+        "use_auth_header": False,
+        "api_key": None,
+        "read_only": False,
+        "transport": "http",
+    }
     defaults.update(overrides)
     return Namespace(**defaults)
 

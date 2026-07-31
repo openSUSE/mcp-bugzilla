@@ -13,7 +13,7 @@ import tempfile
 from argparse import Namespace
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, List, Literal, Optional, TypedDict, Union
+from typing import Any, Literal, TypedDict
 
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
@@ -46,9 +46,12 @@ MAX_INLINE_BYTES: int = 256 * 1024
 # response (it would flood the conversation); the caller should save it instead.
 MAX_FORCED_INLINE_BYTES: int = 1024 * 1024
 
+# Dependency sentinels (B008: must not call Depends() in default arg position)
+_current_headers = CurrentHeaders()
+
 
 @asynccontextmanager
-async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
+async def get_bz(headers: dict = _current_headers) -> Bugzilla:
     """Dependency to get the current Bugzilla client.
 
     For http transport, the API key is read per-request from the configured header
@@ -93,8 +96,12 @@ async def get_bz(headers: dict = CurrentHeaders()) -> Bugzilla:
         await bz.close()
 
 
+# Dependency sentinels (B008: must not call Depends() in default arg position)
+_get_bz = Depends(get_bz)
+
+
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
-async def bug_info(bug_ids: set[int], bz: Bugzilla = Depends(get_bz)) -> dict[str, Any]:
+async def bug_info(bug_ids: set[int], bz: Bugzilla = _get_bz) -> dict[str, Any]:
     """Returns the entire information for one or more bugzilla bug ids."""
 
     mcp_log.info(f"[LLM-REQ] bug_info(ids={bug_ids})")
@@ -106,15 +113,15 @@ async def bug_info(bug_ids: set[int], bz: Bugzilla = Depends(get_bz)) -> dict[st
         result = await bz.bug_info(bug_ids)
         return result
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to fetch bug info\nReason: {e}")
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bug_history(
     id: int,
-    new_since: Optional[datetime] = None,
-    bz: Bugzilla = Depends(get_bz),
+    new_since: datetime | None = None,
+    bz: Bugzilla = _get_bz,
 ) -> list[dict[str, Any]]:
     """Returns the history of given bug id.
     new_since allows filtering history newer than the given date.
@@ -126,7 +133,7 @@ async def bug_history(
         history = await bz.bug_history(id, new_since=new_since)
         mcp_log.info(f"[LLM-RES] Returning {len(history)} history items")
         return history
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to fetch bug history\nReason: {e}")
 
 
@@ -134,9 +141,9 @@ async def bug_history(
 async def bug_comments(
     id: int,
     include_private_comments: bool = False,
-    new_since: Optional[datetime] = None,
-    bz: Bugzilla = Depends(get_bz),
-) -> List[dict[str, Any]]:
+    new_since: datetime | None = None,
+    bz: Bugzilla = _get_bz,
+) -> list[dict[str, Any]]:
     """Returns the comments of given bug id
     Private comments are not included by default
     but can be explicitly requested.
@@ -160,7 +167,7 @@ async def bug_comments(
         mcp_log.info(f"[LLM-RES] Returning {len(public_comments)} public comments")
         return public_comments
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to fetch bug comments\nReason: {e}")
 
 
@@ -169,7 +176,7 @@ async def bug_comments(
     tags={"write"},
 )
 async def add_comment(
-    bug_id: int, comment: str, is_private: bool = False, bz: Bugzilla = Depends(get_bz)
+    bug_id: int, comment: str, is_private: bool = False, bz: Bugzilla = _get_bz
 ) -> dict[str, int]:
     """Add a comment to a bug. It can optionally be private. If success, returns the created comment id."""
     mcp_log.info(
@@ -178,19 +185,18 @@ async def add_comment(
     try:
         result = await bz.add_comment(bug_id, comment, is_private)
         return result
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to create a comment\n{e}")
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bugs_quicksearch(
     query: str,
-    include_fields: Optional[
-        str
-    ] = "id,product,component,assigned_to,status,resolution,summary,last_change_time",
-    limit: Optional[int] = 50,
-    offset: Optional[int] = 0,
-    bz: Bugzilla = Depends(get_bz),
+    include_fields: str
+    | None = "id,product,component,assigned_to,status,resolution,summary,last_change_time",
+    limit: int | None = 50,
+    offset: int | None = 0,
+    bz: Bugzilla = _get_bz,
 ) -> dict[str, Any]:
     """Search bugs using bugzilla's quicksearch syntax
 
@@ -216,12 +222,12 @@ async def bugs_quicksearch(
         mcp_log.info("[LLM-RES] Returning quicksearch envelope")
         return envelope
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Search failed: {e}")
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
-async def quicksearch_syntax_resource(bz: Bugzilla = Depends(get_bz)) -> str:
+async def quicksearch_syntax_resource(bz: Bugzilla = _get_bz) -> str:
     """Access the documentation of the bugzilla quicksearch syntax. LLM can learn using this tool. Response is in HTML"""
 
     mcp_log.info("[LLM-REQ] quicksearch_syntax_resource()")
@@ -241,17 +247,17 @@ async def quicksearch_syntax_resource(bz: Bugzilla = Depends(get_bz)) -> str:
 
         mcp_log.info(f"[LLM-RES] Fetched {len(r.text)} chars of documentation")
         return r.text
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ResourceError(f"Failed to fetch quicksearch documentation: {e}")
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
-async def bugzilla_server_info(bz: Bugzilla = Depends(get_bz)) -> dict[str, Any]:
+async def bugzilla_server_info(bz: Bugzilla = _get_bz) -> dict[str, Any]:
     """Returns comprehensive bugzilla server information (url, version, extensions, timezone, time, parameters)."""
     mcp_log.info("[LLM-REQ] bugzilla_server_info()")
     try:
         return await bz.bugzilla_info()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to fetch bugzilla server info\nReason: {e}")
 
 
@@ -263,7 +269,7 @@ def bug_url(bug_id: int) -> str:
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
-async def mcp_server_info_resource(bz: Bugzilla = Depends(get_bz)) -> dict[str, Any]:
+async def mcp_server_info_resource(bz: Bugzilla = _get_bz) -> dict[str, Any]:
     """Returns the args being used by the current server instance"""
 
     mcp_log.info("[LLM-REQ] mcp_server_info_resource()")
@@ -275,21 +281,21 @@ async def mcp_server_info_resource(bz: Bugzilla = Depends(get_bz)) -> dict[str, 
     try:
         r = await bz.server_version()
         info["bugzilla_server_version"] = r
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         mcp_log.info(f"[LLM-RES]: {e}")
 
     return info
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
-def get_current_headers_resource(headers: dict = CurrentHeaders()) -> dict[str, Any]:
+def get_current_headers_resource(headers: dict = _current_headers) -> dict[str, Any]:
     """Returns the headers being provided by the current http request"""
     mcp_log.info("[LLM-REQ] get_current_headers_resource()")
     return headers
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
-async def summarize_bug_prompt(id: int, bz: Bugzilla = Depends(get_bz)) -> str:
+async def summarize_bug_prompt(id: int, bz: Bugzilla = _get_bz) -> str:
     """Summarizes all the comments of a bug"""
 
     mcp_log.info(f"[LLM-REQ] summarize_bug_prompt(id={id})")
@@ -312,7 +318,7 @@ async def summarize_bug_prompt(id: int, bz: Bugzilla = Depends(get_bz)) -> str:
         mcp_log.info(f"[LLM-RES] Generated prompt of length {len(summary_prompt)}")
         return summary_prompt
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise PromptError(f"Summarize Comments Failed\nReason: {e}")
 
 
@@ -327,9 +333,9 @@ async def summarize_bug_prompt(id: int, bz: Bugzilla = Depends(get_bz)) -> str:
 async def update_bug_status(
     bug_id: int,
     status: str,
-    resolution: Optional[str] = None,
+    resolution: str | None = None,
     comment: str = "",
-    bz: Bugzilla = Depends(get_bz),
+    bz: Bugzilla = _get_bz,
 ) -> dict[str, Any]:
     """Update the status of a bug. Optionally add a comment explaining the status change.
 
@@ -363,7 +369,7 @@ async def update_bug_status(
     try:
         result = await bz.update_bug(bug_id, updates, comment)
         return result
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to update bug status\n{e}")
 
 
@@ -376,7 +382,7 @@ async def update_bug_status(
     tags={"write"},
 )
 async def assign_bug(
-    bug_id: int, assignee: str, comment: str = "", bz: Bugzilla = Depends(get_bz)
+    bug_id: int, assignee: str, comment: str = "", bz: Bugzilla = _get_bz
 ) -> dict[str, Any]:
     """Assign a bug to a user. Optionally add a comment.
 
@@ -389,7 +395,7 @@ async def assign_bug(
     try:
         result = await bz.update_bug(bug_id, {"assigned_to": assignee}, comment)
         return result
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to assign bug\n{e}")
 
 
@@ -403,12 +409,12 @@ async def assign_bug(
 )
 async def update_bug_fields(
     bug_id: int,
-    priority: Optional[str] = None,
-    severity: Optional[str] = None,
-    resolution: Optional[str] = None,
-    custom_fields: Optional[dict[str, Any]] = None,
+    priority: str | None = None,
+    severity: str | None = None,
+    resolution: str | None = None,
+    custom_fields: dict[str, Any] | None = None,
     comment: str = "",
-    bz: Bugzilla = Depends(get_bz),
+    bz: Bugzilla = _get_bz,
 ) -> dict[str, Any]:
     """Update various bug fields. All fields are optional.
 
@@ -440,7 +446,7 @@ async def update_bug_fields(
     try:
         result = await bz.update_bug(bug_id, updates, comment)
         return result
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to update bug fields\n{e}")
 
 
@@ -454,12 +460,12 @@ async def update_bug_fields(
 )
 async def update_bug_dependencies(
     bug_id: int,
-    blocks_add: Optional[list[int]] = None,
-    blocks_remove: Optional[list[int]] = None,
-    depends_on_add: Optional[list[int]] = None,
-    depends_on_remove: Optional[list[int]] = None,
+    blocks_add: list[int] | None = None,
+    blocks_remove: list[int] | None = None,
+    depends_on_add: list[int] | None = None,
+    depends_on_remove: list[int] | None = None,
     comment: str = "",
-    bz: Bugzilla = Depends(get_bz),
+    bz: Bugzilla = _get_bz,
 ) -> dict[str, Any]:
     """Update bug dependency relationships (blocks/depends_on).
 
@@ -491,7 +497,7 @@ async def update_bug_dependencies(
     try:
         result = await bz.update_bug(bug_id, updates, comment)
         return result
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to update bug dependencies\n{e}")
 
 
@@ -504,7 +510,7 @@ async def update_bug_dependencies(
     tags={"write"},
 )
 async def add_cc_to_bug(
-    bug_id: int, cc_email: str, bz: Bugzilla = Depends(get_bz)
+    bug_id: int, cc_email: str, bz: Bugzilla = _get_bz
 ) -> dict[str, Any]:
     """Add an email address to the CC list of a bug.
 
@@ -516,7 +522,7 @@ async def add_cc_to_bug(
     try:
         result = await bz.update_bug(bug_id, {"cc": {"add": [cc_email]}}, "")
         return result
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to add CC\n{e}")
 
 
@@ -529,7 +535,7 @@ async def add_cc_to_bug(
     tags={"write"},
 )
 async def mark_as_duplicate(
-    bug_id: int, duplicate_of: int, comment: str = "", bz: Bugzilla = Depends(get_bz)
+    bug_id: int, duplicate_of: int, comment: str = "", bz: Bugzilla = _get_bz
 ) -> dict[str, Any]:
     """Mark a bug as a duplicate of another bug and close it.
 
@@ -550,7 +556,7 @@ async def mark_as_duplicate(
     try:
         result = await bz.update_bug(bug_id, updates, comment)
         return result
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to mark as duplicate\n{e}")
 
 
@@ -570,11 +576,11 @@ async def create_bug(
     description: str,
     op_sys: str = "All",
     platform: str = "All",
-    priority: Optional[str] = None,
-    severity: Optional[str] = None,
-    cc: Optional[list[str]] = None,
-    custom_fields: Optional[dict[str, Any]] = None,
-    bz: Bugzilla = Depends(get_bz),
+    priority: str | None = None,
+    severity: str | None = None,
+    cc: list[str] | None = None,
+    custom_fields: dict[str, Any] | None = None,
+    bz: Bugzilla = _get_bz,
 ) -> dict[str, Any]:
     """Create a new bug. Returns the new bug id on success.
 
@@ -620,7 +626,7 @@ async def create_bug(
 
     try:
         return await bz.create_bug(fields)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to create bug\n{e}")
 
 
@@ -641,7 +647,7 @@ async def add_attachment(
     is_patch: bool = False,
     is_private: bool = False,
     comment: str = "",
-    bz: Bugzilla = Depends(get_bz),
+    bz: Bugzilla = _get_bz,
 ) -> dict[str, Any]:
     """Attach a file to a bug. Returns the created attachment id(s).
 
@@ -674,7 +680,7 @@ async def add_attachment(
 
     try:
         return await bz.add_attachment(bug_id, payload)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to add attachment\n{e}")
 
 
@@ -682,9 +688,7 @@ async def add_attachment(
     annotations={"readOnlyHint": True, "openWorldHint": True},
     tags={"read"},
 )
-async def list_attachments(
-    bug_id: int, bz: Bugzilla = Depends(get_bz)
-) -> list[dict[str, Any]]:
+async def list_attachments(bug_id: int, bz: Bugzilla = _get_bz) -> list[dict[str, Any]]:
     """List a bug's attachments (metadata only, without the file contents).
 
     Use this to discover attachment ids, then pass an id to ``download_attachment``
@@ -701,7 +705,7 @@ async def list_attachments(
     mcp_log.info(f"[LLM-REQ] list_attachments(bug_id={bug_id})")
     try:
         return await bz.list_attachments(bug_id)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to list attachments\nReason: {e}")
 
 
@@ -709,11 +713,11 @@ class _AttachmentMeta(TypedDict):
     """Metadata returned with every download_attachment result."""
 
     attachment_id: int
-    file_name: Optional[str]
+    file_name: str | None
     content_type: str
     size: int
-    is_private: Optional[bool]
-    is_obsolete: Optional[bool]
+    is_private: bool | None
+    is_obsolete: bool | None
 
 
 class TextAttachment(_AttachmentMeta):
@@ -732,7 +736,7 @@ class SavedAttachment(_AttachmentMeta):
 
 
 # Discriminated union keyed on ``mode``; a type checker narrows on result["mode"].
-DownloadResult = Union[TextAttachment, Base64Attachment, SavedAttachment]
+DownloadResult = TextAttachment | Base64Attachment | SavedAttachment
 
 
 @mcp.tool(
@@ -741,10 +745,10 @@ DownloadResult = Union[TextAttachment, Base64Attachment, SavedAttachment]
 )
 async def download_attachment(
     attachment_id: int,
-    output_dir: Optional[str] = None,
+    output_dir: str | None = None,
     delivery: Literal["auto", "inline", "save"] = "auto",
     include_private: bool = False,
-    bz: Bugzilla = Depends(get_bz),
+    bz: Bugzilla = _get_bz,
 ) -> DownloadResult:
     """Download a single attachment by id. Discover ids with ``list_attachments``.
 
@@ -830,7 +834,7 @@ async def download_attachment(
             mcp_log.info(f"[LLM-RES] attachment {attachment_id} saved to {abspath}")
             return {"mode": "saved", "path": abspath, **meta}
 
-        def _inline() -> Union[TextAttachment, Base64Attachment]:
+        def _inline() -> TextAttachment | Base64Attachment:
             if len(raw) > MAX_FORCED_INLINE_BYTES:
                 raise ToolError(
                     f"Attachment {attachment_id} is {len(raw)} bytes, too large to "
@@ -872,7 +876,7 @@ async def download_attachment(
         raise ToolError(f"Unknown delivery mode: {delivery!r}")
     except ToolError:
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to download attachment {attachment_id}\nReason: {e}")
 
 
@@ -922,8 +926,7 @@ def start():
         tempfile.gettempdir(), "mcp-bugzilla"
     )
     # Ensure base_url doesn't have trailing slash for consistency
-    if base_url.endswith("/"):
-        base_url = base_url[:-1]
+    base_url = base_url.removesuffix("/")
 
     # Seletively disable components before running the server
     disable_components_selectively()

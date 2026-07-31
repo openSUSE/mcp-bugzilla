@@ -1,9 +1,11 @@
+from datetime import UTC, datetime
+
 import pytest
 import pytest_asyncio
 import respx
 from httpx import Response
+
 from mcp_bugzilla.mcp_utils import Bugzilla, is_textual, safe_filename
-from datetime import datetime
 
 MOCK_URL = "https://bugzilla.example.com"
 MOCK_API_KEY = "secret_key"
@@ -113,7 +115,7 @@ async def test_bug_history(bz_client):
         assert route.called
         assert "new_since" not in route.calls.last.request.url.params
 
-        test_dt = datetime(2026, 3, 9, 0, 0, 0)
+        test_dt = datetime(2026, 3, 9, 0, 0, 0, tzinfo=UTC)
         history_with_since = await bz_client.bug_history(123, new_since=test_dt)
         assert len(history_with_since) == 1
         assert (
@@ -146,7 +148,7 @@ async def test_bug_comments(bz_client):
         assert route.called
         assert "new_since" not in route.calls.last.request.url.params
 
-        test_dt = datetime(2000, 1, 1, 0, 0, 0)
+        test_dt = datetime(2000, 1, 1, 0, 0, 0, tzinfo=UTC)
         comments_with_since = await bz_client.bug_comments(123, new_since=test_dt)
         assert len(comments_with_since) == 2
         assert (

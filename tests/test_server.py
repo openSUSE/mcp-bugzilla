@@ -1,5 +1,7 @@
+import asyncio
 import base64
 import os
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -61,8 +63,8 @@ async def test_download_attachment_binary_saved(tmp_path):
     assert result["size"] == len(blob)
     saved = result["path"]
     assert os.path.isfile(saved)
-    with open(saved, "rb") as f:
-        assert f.read() == blob
+    content = await asyncio.to_thread(lambda: Path(saved).read_bytes())
+    assert content == blob
 
 
 @pytest.mark.asyncio

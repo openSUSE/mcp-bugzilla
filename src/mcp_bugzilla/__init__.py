@@ -148,11 +148,7 @@ def main():
     # an explicit pass (env-var defaults muddy the comparison further).
     if args.transport == "stdio":
         explicit_host_or_port = any(
-            tok == "--host"
-            or tok == "--port"
-            or tok.startswith("--host=")
-            or tok.startswith("--port=")
-            for tok in sys.argv[1:]
+            tok.startswith(("--host", "--port")) for tok in sys.argv[1:]
         )
         if explicit_host_or_port:
             parser.error("--host/--port are not valid with --transport stdio")

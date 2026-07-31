@@ -504,10 +504,9 @@ print(result)
 
 ```python
 # Search for new bugs in Firefox product
-result = client.call_tool("bugs_quicksearch", {
-    "query": "product:Firefox status:NEW",
-    "limit": 10
-})
+result = client.call_tool(
+    "bugs_quicksearch", {"query": "product:Firefox status:NEW", "limit": 10}
+)
 # Returns list of bugs with essential fields
 ```
 
@@ -515,11 +514,14 @@ result = client.call_tool("bugs_quicksearch", {
 
 ```python
 # Add a public comment to a bug
-result = client.call_tool("add_comment", {
-    "bug_id": 12345,
-    "comment": "This issue has been resolved in version 2.0",
-    "is_private": False
-})
+result = client.call_tool(
+    "add_comment",
+    {
+        "bug_id": 12345,
+        "comment": "This issue has been resolved in version 2.0",
+        "is_private": False,
+    },
+)
 # Returns: {"id": 67890} - the new comment ID
 ```
 
@@ -527,22 +529,20 @@ result = client.call_tool("add_comment", {
 
 ```python
 # Get the history of changes for a bug
-history = client.call_tool("bug_history", {
-    "id": 12345,
-    "new_since": datetime.fromisoformat("2026-01-01T00:00:00")
-})
+history = client.call_tool(
+    "bug_history",
+    {"id": 12345, "new_since": datetime.fromisoformat("2026-01-01T00:00:00")},
+)
 
 # Get all public comments
-public_comments = client.call_tool("bug_comments", {
-    "id": 12345,
-    "include_private_comments": False
-})
+public_comments = client.call_tool(
+    "bug_comments", {"id": 12345, "include_private_comments": False}
+)
 
 # Get all comments including private ones
-all_comments = client.call_tool("bug_comments", {
-    "id": 12345,
-    "include_private_comments": True
-})
+all_comments = client.call_tool(
+    "bug_comments", {"id": 12345, "include_private_comments": True}
+)
 ```
 
 ### Example 5: Quicksearch Syntax Examples
@@ -585,32 +585,41 @@ curl -X POST http://127.0.0.1:8000/mcp/ \
 ### Example 7: Update Bug Status
 ```python
 # Close a bug as fixed
-result = client.call_tool("update_bug_status", {
-    "bug_id": 12345,
-    "status": "CLOSED",
-    "resolution": "FIXED",
-    "comment": "Fixed in commit abc123"
-})
+result = client.call_tool(
+    "update_bug_status",
+    {
+        "bug_id": 12345,
+        "status": "CLOSED",
+        "resolution": "FIXED",
+        "comment": "Fixed in commit abc123",
+    },
+)
 ```
 
 ### Example 8: Assign a Bug
 ```python
 # Assign bug to a developer
-result = client.call_tool("assign_bug", {
-    "bug_id": 12345,
-    "assignee": "developer@example.com",
-    "comment": "Please review this regression"
-})
+result = client.call_tool(
+    "assign_bug",
+    {
+        "bug_id": 12345,
+        "assignee": "developer@example.com",
+        "comment": "Please review this regression",
+    },
+)
 ```
 
 ### Example 9: Mark as Duplicate
 ```python
 # Mark bug as duplicate and close it
-result = client.call_tool("mark_as_duplicate", {
-    "bug_id": 12345,
-    "duplicate_of": 67890,
-    "comment": "This is a duplicate of the original report"
-})
+result = client.call_tool(
+    "mark_as_duplicate",
+    {
+        "bug_id": 12345,
+        "duplicate_of": 67890,
+        "comment": "This is a duplicate of the original report",
+    },
+)
 # Bug is automatically closed with resolution DUPLICATE
 ```
 

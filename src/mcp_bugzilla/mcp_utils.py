@@ -11,7 +11,7 @@ import logging
 import os
 import re
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from httpx_retries import RetryTransport
@@ -33,13 +33,9 @@ class ColorFormatter(logging.Formatter):
     def format(self, record):
         log_fmt = self.FORMAT
         if isinstance(record.msg, str):
-            if "[LLM-REQ]" in record.msg:
+            if "[LLM-REQ]" in record.msg or "[LLM-RES]" in record.msg:
                 log_fmt = self.CYAN + self.FORMAT + self.RESET
-            elif "[LLM-RES]" in record.msg:
-                log_fmt = self.CYAN + self.FORMAT + self.RESET
-            elif "[BZ-REQ]" in record.msg:
-                log_fmt = self.GREEN + self.FORMAT + self.RESET
-            elif "[BZ-RES]" in record.msg:
+            elif "[BZ-REQ]" in record.msg or "[BZ-RES]" in record.msg:
                 log_fmt = self.GREEN + self.FORMAT + self.RESET
 
         if record.levelno >= logging.ERROR:
@@ -70,13 +66,13 @@ class BugzillaAPIError(Exception):
         )
 
 
-def _bugzilla_error_body(response: httpx.Response) -> Optional[dict[str, Any]]:
+def _bugzilla_error_body(response: httpx.Response) -> dict[str, Any] | None:
     """Parse Bugzilla error from response body, if present."""
     try:
         body = response.json()
         if isinstance(body, dict) and body.get("error") and "message" in body:
             return body
-    except Exception:
+    except (ValueError, KeyError):
         pass
     return None
 
@@ -202,7 +198,7 @@ class Bugzilla:
         return envelope
 
     async def bug_history(
-        self, bug_id: int, new_since: Optional[datetime] = None
+        self, bug_id: int, new_since: datetime | None = None
     ) -> list[dict[str, Any]]:
         """Get history of a bug"""
         url = f"/bug/{bug_id}/history"
@@ -231,7 +227,7 @@ class Bugzilla:
         return history
 
     async def bug_comments(
-        self, bug_id: int, new_since: Optional[datetime] = None
+        self, bug_id: int, new_since: datetime | None = None
     ) -> list[dict[str, Any]]:
         """Get comments of a bug"""
         url = f"/bug/{bug_id}/comment"
@@ -479,7 +475,7 @@ def is_textual(content_type: str) -> bool:
     return "patch" in ct or "diff" in ct
 
 
-def safe_filename(name: Optional[str], attachment_id: int) -> str:
+def safe_filename(name: str | None, attachment_id: int) -> str:
     """Sanitize a Bugzilla-supplied file name for safe use as a path component.
 
     Strips any directory part and collapses anything outside ``[A-Za-z0-9._-]``
