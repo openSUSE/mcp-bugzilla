@@ -13,4 +13,4 @@ jobs:
     steps:
       - uses: fastify/github-action-merge-dependabot@v3
         with:
-          merge-method: merge
+          merge-method: squash
