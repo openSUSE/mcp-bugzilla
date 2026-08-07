@@ -8,7 +8,8 @@ This document describes common development tasks for the `mcp-bugzilla` project.
 
 - **Entry point**: `src/mcp_bugzilla/__init__.py` → `main()`
 - **MCP tools/prompts**: `src/mcp_bugzilla/server.py`
-- **HTTP utilities**: `src/mcp_bugzilla/mcp_utils.py`
+- **Bugzilla REST client** (`Bugzilla` class): `src/mcp_bugzilla/lib_bugzilla.py` — single source of truth for all Bugzilla API interactions
+- **General utilities** (logging, helpers): `src/mcp_bugzilla/mcp_utils.py`
 - **Tests**: `tests/`
 
 ## Setup
@@ -48,13 +49,14 @@ Optional flags:
 uv run pytest
 ```
 
-Tests use `respx` to mock HTTP calls and `pytest-asyncio` for async test support.
+- All *.py must be linted / formatted with ruff whenever they are modified
+- Tests use `respx` to mock HTTP calls and `pytest-asyncio` for async test support.
 
 ## Adding a New Tool
 
 1. Open `src/mcp_bugzilla/server.py`.
 2. Define a new async function decorated with `@mcp.tool()`.
-3. Add a method to the `Bugzilla` client class in `mcp_utils.py` for the authenticated REST call — use the pre-authenticated `self.client` and follow existing methods like `bug_info` / `update_bug` (including their `httpx` error handling) — then call it from the tool.
+3. Add a method to the `Bugzilla` client class in `lib_bugzilla.py` for the authenticated REST call — use the pre-authenticated `self.client` and follow existing methods like `bug_info` / `update_bug` (including their `httpx` error handling) — then call it from the tool.
 4. Raise `ToolError` on Bugzilla API errors.
 5. Add tests: the client method in `tests/test_mcp_utils.py` (mock HTTP with `respx`), and the tool in `tests/test_server.py` (with an `AsyncMock` client).
 6. update relevant documentation wherever applicable
