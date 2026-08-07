@@ -17,47 +17,14 @@ This document describes common development tasks for the `mcp-bugzilla` project.
   - `test_server.py` — MCP tool functions (with `AsyncMock` client)
   - `test_transport.py` — MCP transport layer (stdio / HTTP)
 
-## Setup
-
-```bash
-uv sync
-```
-
-## Running the Server
-
-```bash
-uv run mcp-bugzilla --bugzilla-server https://bugzilla.example.com
-```
-
-Optional flags:
-
-| Flag | Description |
-|------|-------------|
-| `--bugzilla-server` | Bugzilla server URL (required; env: `BUGZILLA_SERVER`) |
-| `--host` | Listen address (default: `127.0.0.1`) |
-| `--port` | Listen port (default: `8000`) |
-| `--mcp-auth-header` | Header name for client API key (disabled by default; env: `MCP_AUTH_HEADER`) |
-| `--bugzilla-api-key` | Static Bugzilla API key; if omitted access is anonymous (env: `BUGZILLA_API_KEY`) |
-| `--bugzilla-auth-mode` | How to authenticate with Bugzilla: `query` (default) or `bearer` for `Authorization: Bearer` (env: `BUGZILLA_AUTH_MODE`) |
-| `--read-only` | Disable all write tools |
-
-**Deprecated flags** (still work but log a warning — migrate to the replacements above):
-
-| Deprecated Flag | Replacement |
-|-----------------|-------------|
-| `--api-key-header` / `MCP_API_KEY_HEADER` | `--mcp-auth-header` / `MCP_AUTH_HEADER` |
-| `--api-key` | `--bugzilla-api-key` / `BUGZILLA_API_KEY` |
-| `--use-auth-header` | `--bugzilla-auth-mode bearer` |
-
 ## Running Tests
 
 ```bash
-uv run pytest
+uv run pytest # unit tests
+uv run ruff check # lint
+uv run ruff format --check # format
 ```
 
-- All *.py must be linted / formatted with ruff whenever they are modified:
-  - `uv run ruff check` — lint
-  - `uv run ruff format --check` — format
 - Tests use `respx` to mock HTTP calls and `pytest-asyncio` for async test support.
 
 ## Adding a New Tool
@@ -69,42 +36,9 @@ uv run pytest
 5. Add tests: the client method in `tests/test_lib_bugzilla.py` (mock HTTP with `respx`), and the tool in `tests/test_server.py` (with an `AsyncMock` client).
 6. Update relevant documentation wherever applicable
 
-## Disabling Tools at Runtime
+## Commit style
 
-Set the `MCP_BUGZILLA_DISABLED_METHODS` environment variable to a comma-separated list of tool names:
-
-```bash
-export MCP_BUGZILLA_DISABLED_METHODS=add_comment,update_bug_status
-```
-
-Combined with `--read-only` to restrict to a specific read-only subset.
-
-## Authentication Flow
-
-- Clients (http transport) send a Bugzilla API key in an HTTP header (only enabled when `--mcp-auth-header` or `MCP_AUTH_HEADER` is explicitly configured).
-- For stdio transport, the key comes from `--bugzilla-api-key` / `BUGZILLA_API_KEY`.
-- If no non-empty key is found from any source, access is **anonymous** (no credentials sent to Bugzilla).
-- When a key is present, the server forwards it to Bugzilla either as:
-  - `?api_key=...` query parameter (`--bugzilla-auth-mode query`, default), or
-  - `Authorization: Bearer <KEY>` header (`--bugzilla-auth-mode bearer`, required for Red Hat Bugzilla).
-
-## Docker / Podman
-
-Build:
-```bash
-docker build -t mcp-bugzilla .
-```
-
-Run:
-```bash
-docker run -p 8000:8000 \
-  -e BUGZILLA_SERVER=https://bugzilla.example.com \
-  mcp-bugzilla \
-  --bugzilla-server https://bugzilla.example.com \
-  --host 0.0.0.0 \
-  --port 8000
-```
-
+- Use atomic commits & follow [conventional commits spec](https://raw.githubusercontent.com/conventional-commits/conventionalcommits.org/refs/heads/master/content/v1.0.0/index.md)
 ## Publishing a New Release
 
 ### For Humans
@@ -122,12 +56,3 @@ When asked to publish a release:
 - Infer the version bump (patch/minor/major) from commit activity since the latest tag
 - Confirm the proposed version with the user before bumping
 - Follow the steps above
-
-## Key Dependencies
-
-| Package | Purpose |
-|---------|---------|
-| `fastmcp` | MCP server framework |
-| `httpx-retries` | HTTP client with retry support for Bugzilla REST API calls |
-| `pytest` + `pytest-asyncio` | Test runner |
-| `respx` | Mock HTTP requests in tests |
