@@ -19,7 +19,8 @@ from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
 from fastmcp.exceptions import PromptError, ResourceError, ToolError
 
-from .mcp_utils import Bugzilla, is_textual, mcp_log, safe_filename
+from .lib_bugzilla import Bugzilla
+from .mcp_utils import is_textual, mcp_log, safe_filename
 
 # The FastMCP instance
 mcp = FastMCP("Bugzilla")

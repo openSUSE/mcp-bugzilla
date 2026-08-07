@@ -5,7 +5,8 @@ import pytest_asyncio
 import respx
 from httpx import Response
 
-from mcp_bugzilla.mcp_utils import Bugzilla, is_textual, safe_filename
+from mcp_bugzilla.lib_bugzilla import Bugzilla
+from mcp_bugzilla.mcp_utils import is_textual, safe_filename
 
 MOCK_URL = "https://bugzilla.example.com"
 MOCK_API_KEY = "secret_key"
