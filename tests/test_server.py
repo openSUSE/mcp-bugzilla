@@ -522,3 +522,70 @@ async def test_bug_info_defaults_to_full_response():
     bz.bug_info = AsyncMock(return_value={"bugs": [{"id": 1}], "faults": []})
     await server.bug_info(bug_ids={1}, bz=bz)
     bz.bug_info.assert_awaited_once_with({1}, include_fields=None, exclude_fields=None)
+
+
+_ATT = [
+    {
+        "id": 1,
+        "is_obsolete": 1,
+        "is_patch": 1,
+        "file_name": "old.patch",
+        "creation_time": "2025-01-01T00:00:00Z",
+    },
+    {
+        "id": 2,
+        "is_obsolete": 0,
+        "is_patch": 1,
+        "file_name": "new.patch",
+        "creation_time": "2025-02-01T00:00:00Z",
+    },
+    {
+        "id": 3,
+        "is_obsolete": 0,
+        "is_patch": 0,
+        "file_name": "build.log",
+        "creation_time": "2025-03-01T00:00:00Z",
+    },
+]
+
+
+@pytest.mark.asyncio
+async def test_list_attachments_default_returns_all():
+    bz = AsyncMock()
+    bz.list_attachments = AsyncMock(return_value=[dict(a) for a in _ATT])
+    out = await server.list_attachments(bug_id=42, bz=bz)
+    assert [a["id"] for a in out] == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_list_attachments_exclude_obsolete():
+    bz = AsyncMock()
+    bz.list_attachments = AsyncMock(return_value=[dict(a) for a in _ATT])
+    out = await server.list_attachments(bug_id=42, exclude_obsolete=True, bz=bz)
+    assert [a["id"] for a in out] == [2, 3]  # obsolete id 1 dropped
+
+
+@pytest.mark.asyncio
+async def test_list_attachments_patches_only():
+    bz = AsyncMock()
+    bz.list_attachments = AsyncMock(return_value=[dict(a) for a in _ATT])
+    out = await server.list_attachments(bug_id=42, patches_only=True, bz=bz)
+    assert [a["id"] for a in out] == [1, 2]  # non-patch log id 3 dropped
+
+
+@pytest.mark.asyncio
+async def test_list_attachments_limit_keeps_most_recent():
+    bz = AsyncMock()
+    bz.list_attachments = AsyncMock(return_value=[dict(a) for a in _ATT])
+    out = await server.list_attachments(bug_id=42, limit=1, bz=bz)
+    assert [a["id"] for a in out] == [3]  # newest kept, chronological order
+
+
+@pytest.mark.asyncio
+async def test_list_attachments_filters_compose():
+    bz = AsyncMock()
+    bz.list_attachments = AsyncMock(return_value=[dict(a) for a in _ATT])
+    out = await server.list_attachments(
+        bug_id=42, exclude_obsolete=True, patches_only=True, bz=bz
+    )
+    assert [a["id"] for a in out] == [2]  # only the non-obsolete patch

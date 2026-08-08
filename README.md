@@ -68,11 +68,15 @@ The server provides the following tools for interacting with Bugzilla:
 
 #### Attachments
 
-- **`list_attachments(bug_id: int)`**: Lists a bug's attachments as metadata only (the base64 file contents are excluded to keep responses small).
+- **`list_attachments(bug_id: int, exclude_obsolete: bool = False, patches_only: bool = False, limit: Optional[int] = None)`**: Lists a bug's attachments as metadata only (the base64 file contents are excluded to keep responses small), with filters to cut the noise on bugs that accumulate many attachments.
   - **Parameters**:
     - `bug_id`: The bug whose attachments to list
+    - `exclude_obsolete`: Drop attachments flagged obsolete (`is_obsolete`). Note: some bots (e.g. release-monitoring) never set this flag, so it only helps where obsolete is actually used
+    - `patches_only`: Keep only attachments flagged as patches (`is_patch`)
+    - `limit`: Return only the most recent N attachments (chronological order preserved)
   - **Returns**: A list of attachment metadata objects (`id`, `file_name`, `summary`, `content_type`, `size`, `is_private`, `is_obsolete`, `is_patch`, `creation_time`, ...). Use an `id` with `download_attachment` to fetch the file.
-  - **Example**: `list_attachments(989633)`
+  - **Note on Bugzilla API parity**: `exclude_obsolete`, `patches_only`, and `limit` have no server-side Bugzilla equivalent — this server applies them client-side, as post-processing over the standard attachment metadata; the underlying Bugzilla request is unmodified
+  - **Example**: `list_attachments(2381747, patches_only=True, limit=3)` returns the 3 most recent patch attachments
 
 - **`download_attachment(attachment_id: int, output_dir: Optional[str] = None, delivery: "auto" | "inline" | "save" = "auto", include_private: bool = False)`**: Downloads a single attachment by id. The `delivery` argument lets the caller choose how the content is returned.
   - **Parameters**:

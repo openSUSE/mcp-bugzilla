@@ -791,27 +791,50 @@ async def add_attachment(
         raise ToolError(f"Failed to add attachment\n{e}")
 
 
-@mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": True},
-    tags={"read"},
-)
-async def list_attachments(bug_id: int, bz: Bugzilla = _get_bz) -> list[dict[str, Any]]:
-    """List a bug's attachments (metadata only, without the file contents).
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
+async def list_attachments(
+    bug_id: int,
+    exclude_obsolete: bool = False,
+    patches_only: bool = False,
+    limit: int | None = None,
+    bz: Bugzilla = _get_bz,
+) -> list[dict[str, Any]]:
+    """List a bug's attachments (metadata only; base64 contents excluded).
 
-    Use this to discover attachment ids, then pass an id to ``download_attachment``
-    to fetch the actual file. The base64 ``data`` field is intentionally omitted
-    here to keep responses small.
+    Long-lived bugs accumulate many attachments (e.g. a patch re-attached on
+    every version bump), so these filters keep only the relevant ones:
 
-    Args:
-        bug_id: The bug whose attachments to list.
+      exclude_obsolete  Drop attachments flagged obsolete (is_obsolete). Note:
+                        some bots (e.g. release-monitoring) never set this
+                        flag, so it only helps where obsolete is actually used.
+      patches_only      Keep only attachments flagged as patches (is_patch).
+      limit             Return only the most recent N attachments
+                        (chronological order preserved).
 
-    Returns:
-        A list of attachment metadata objects (id, file_name, summary,
-        content_type, size, is_private, is_obsolete, is_patch, creation_time, ...).
+    Use an attachment's id with download_attachment to fetch the file.
     """
-    mcp_log.info(f"[LLM-REQ] list_attachments(bug_id={bug_id})")
+    mcp_log.info(
+        f"[LLM-REQ] list_attachments(bug_id={bug_id}, "
+        f"exclude_obsolete={exclude_obsolete}, patches_only={patches_only}, "
+        f"limit={limit})"
+    )
     try:
-        return await bz.list_attachments(bug_id)
+        attachments = await bz.list_attachments(bug_id)
+
+        # WHERE NOT is_obsolete
+        if exclude_obsolete:
+            attachments = [a for a in attachments if not a.get("is_obsolete")]
+
+        # WHERE is_patch
+        if patches_only:
+            attachments = [a for a in attachments if a.get("is_patch")]
+
+        # LIMIT to the most recent N (chronological order preserved)
+        if limit and limit > 0:
+            attachments = attachments[-limit:]
+
+        mcp_log.info(f"[LLM-RES] Returning {len(attachments)} attachments")
+        return attachments
     except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to list attachments\nReason: {e}")
 
