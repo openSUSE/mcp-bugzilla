@@ -499,3 +499,26 @@ async def test_bug_history_limit_keeps_most_recent():
     bz.bug_history = AsyncMock(return_value=[dict(h) for h in _HIST])
     out = await server.bug_history(id=42, limit=1, bz=bz)
     assert len(out) == 1 and out[0]["when"] == "2026-03-01T00:00:00Z"  # newest
+
+
+@pytest.mark.asyncio
+async def test_bug_info_passes_field_selection_through():
+    bz = AsyncMock()
+    bz.bug_info = AsyncMock(return_value={"bugs": [{"id": 1}], "faults": []})
+    await server.bug_info(
+        bug_ids={1},
+        include_fields="id,status,summary",
+        exclude_fields="cc_detail",
+        bz=bz,
+    )
+    bz.bug_info.assert_awaited_once_with(
+        {1}, include_fields="id,status,summary", exclude_fields="cc_detail"
+    )
+
+
+@pytest.mark.asyncio
+async def test_bug_info_defaults_to_full_response():
+    bz = AsyncMock()
+    bz.bug_info = AsyncMock(return_value={"bugs": [{"id": 1}], "faults": []})
+    await server.bug_info(bug_ids={1}, bz=bz)
+    bz.bug_info.assert_awaited_once_with({1}, include_fields=None, exclude_fields=None)

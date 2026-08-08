@@ -102,16 +102,39 @@ _get_bz = Depends(get_bz)
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
-async def bug_info(bug_ids: set[int], bz: Bugzilla = _get_bz) -> dict[str, Any]:
-    """Returns the entire information for one or more bugzilla bug ids."""
+async def bug_info(
+    bug_ids: set[int],
+    include_fields: str | None = None,
+    exclude_fields: str | None = None,
+    bz: Bugzilla = _get_bz,
+) -> dict[str, Any]:
+    """Returns information for one or more bugzilla bug ids.
 
-    mcp_log.info(f"[LLM-REQ] bug_info(ids={bug_ids})")
+    By default every field is returned. For large or bulk fetches, use
+    Bugzilla's native field selection to keep only what is needed:
+
+      include_fields  Comma-separated field names to return (Bugzilla's own
+                      Bug.get parameter). Supports field groups and the special
+                      values _default, _all, _extra.
+      exclude_fields  Comma-separated field names to drop -- handy for the
+                      verbose user-object expansions, e.g.
+                      "cc_detail,creator_detail,assigned_to_detail,qa_contact_detail".
+
+    Both are forwarded to the Bugzilla API unchanged.
+    """
+
+    mcp_log.info(
+        f"[LLM-REQ] bug_info(ids={bug_ids}, include_fields={include_fields}, "
+        f"exclude_fields={exclude_fields})"
+    )
 
     if not bug_ids:
         raise ToolError("No bug IDs provided")
 
     try:
-        result = await bz.bug_info(bug_ids)
+        result = await bz.bug_info(
+            bug_ids, include_fields=include_fields, exclude_fields=exclude_fields
+        )
         return result
 
     except Exception as e:  # noqa: BLE001

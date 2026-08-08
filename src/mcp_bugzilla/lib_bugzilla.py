@@ -126,7 +126,12 @@ class Bugzilla:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
             raise
 
-    async def bug_info(self, ids: set[int]) -> dict[str, Any]:
+    async def bug_info(
+        self,
+        ids: set[int],
+        include_fields: str | None = None,
+        exclude_fields: str | None = None,
+    ) -> dict[str, Any]:
         """Get information about a given bug or list of bugs"""
 
         if len(ids) == 1:
@@ -135,6 +140,11 @@ class Bugzilla:
         else:
             url = "/bug"
             params = {"id": ",".join(str(i) for i in ids)}
+
+        if include_fields:
+            params["include_fields"] = include_fields
+        if exclude_fields:
+            params["exclude_fields"] = exclude_fields
 
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} params={params}")
 

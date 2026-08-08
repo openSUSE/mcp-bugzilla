@@ -777,3 +777,29 @@ async def test_bearer_client_sends_auth_header_not_param():
             assert "authorization" in dict(route.calls.last.request.headers)
     finally:
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_bug_info_forwards_field_selection(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/bug/123").mock(
+            return_value=Response(200, json={"bugs": [{"id": 123}], "faults": []})
+        )
+        await bz_client.bug_info(
+            {123}, include_fields="id,status", exclude_fields="cc_detail"
+        )
+        q = route.calls.last.request.url.params
+        assert q.get("include_fields") == "id,status"
+        assert q.get("exclude_fields") == "cc_detail"
+
+
+@pytest.mark.asyncio
+async def test_bug_info_omits_field_selection_when_none(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/bug/123").mock(
+            return_value=Response(200, json={"bugs": [{"id": 123}], "faults": []})
+        )
+        await bz_client.bug_info({123})
+        q = route.calls.last.request.url.params
+        assert "include_fields" not in q
+        assert "exclude_fields" not in q

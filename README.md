@@ -25,11 +25,14 @@ The server provides the following tools for interacting with Bugzilla:
 
 #### Bug Information
 
-- **`bug_info(bug_ids: set[int])`**: Retrieves comprehensive details for specified Bugzilla bug IDs.
+- **`bug_info(bug_ids: set[int], include_fields: Optional[str] = None, exclude_fields: Optional[str] = None)`**: Returns information for one or more bug IDs.
   - **Parameters**:
-    - `bug_ids`: A set of bug IDs to fetch details for
-  - **Returns**: A dictionary containing the array `bugs` which lists all available information about the bugs (status, assignee, summary, description, extensions, etc.)
-  - **Example**: `bug_info({12345, 67890})` returns complete bug details for the specified IDs.
+    - `bug_ids`: One or more bug IDs to fetch
+    - `include_fields`: Comma-separated field names to return (Bugzilla's native `Bug.get` parameter; supports field groups and the special values `_default`, `_all`, `_extra`). Defaults to all fields
+    - `exclude_fields`: Comma-separated field names to drop, e.g. `"cc_detail,creator_detail,assigned_to_detail,qa_contact_detail"` to shed the verbose user-object expansions
+  - **Returns**: The bug data envelope containing the requested bug(s)
+  - **Note on Bugzilla API parity**: both `include_fields` and `exclude_fields` are native Bugzilla `Bug.get` parameters, forwarded to the API unchanged (server-side field selection); the underlying request is standard Bugzilla
+  - **Example**: `bug_info({12345, 67890}, exclude_fields="cc_detail,creator_detail,assigned_to_detail,qa_contact_detail")` fetches two bugs without the verbose user-object expansions
 
 - **`bug_history(id: int, new_since: Optional[datetime] = None, changed_fields: Optional[str] = None, exclude_authors: Optional[str] = None, limit: Optional[int] = None)`**: Fetches the change history of a given bug ID, with SQL-like controls to keep only the change events that matter for triage.
   - **Parameters**:
