@@ -5,7 +5,7 @@ import pytest_asyncio
 import respx
 from httpx import Response
 
-from mcp_bugzilla.lib_bugzilla import Bugzilla
+from mcp_bugzilla.lib_bugzilla import Bugzilla, BugzillaResponseError
 from mcp_bugzilla.mcp_utils import is_textual, safe_filename
 
 MOCK_URL = "https://bugzilla.example.com"
@@ -155,6 +155,29 @@ async def test_bug_comments(bz_client):
         assert (
             route.calls.last.request.url.params["new_since"] == "2000-01-01T00:00:00Z"
         )
+
+
+@pytest.mark.asyncio
+async def test_bug_comments_non_json_response_surfaces_context(bz_client):
+    """A 200 with HTML must report the status, content type and body, and must
+    not echo the API key back."""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/bug/123/comment").mock(
+            return_value=Response(
+                200,
+                headers={"Content-Type": "text/html; charset=utf-8"},
+                text="<!DOCTYPE html><html><body>Checking your browser</body></html>",
+            )
+        )
+
+        with pytest.raises(BugzillaResponseError) as exc_info:
+            await bz_client.bug_comments(123)
+
+    message = str(exc_info.value)
+    assert "HTTP 200" in message
+    assert "text/html" in message
+    assert "Checking your browser" in message
+    assert MOCK_API_KEY not in message
 
 
 @pytest.mark.asyncio
