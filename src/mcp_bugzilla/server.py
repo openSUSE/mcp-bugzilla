@@ -520,6 +520,8 @@ async def update_bug_fields(
     severity: str | None = None,
     resolution: str | None = None,
     custom_fields: dict[str, Any] | None = None,
+    reset_qa_contact: bool = False,
+    reset_assigned_to: bool = False,
     comment: str = "",
     bz: Bugzilla = _get_bz,
 ) -> dict[str, Any]:
@@ -531,10 +533,13 @@ async def update_bug_fields(
         severity: Severity (e.g., urgent, high, medium, low, unspecified)
         resolution: Resolution (e.g., FIXED, WONTFIX, NOTABUG, DUPLICATE) - only for closed bugs
         custom_fields: Dict of custom fields e.g. {"cf_fixed_in": "1.2.3"}
+        reset_qa_contact: Reset the QA contact to the component's default
+        reset_assigned_to: Reset the assignee to the component's default
         comment: Optional comment explaining the changes
     """
     mcp_log.info(
-        f"[LLM-REQ] update_bug_fields(bug_id={bug_id}, priority={priority}, severity={severity}, resolution={resolution})"
+        f"[LLM-REQ] update_bug_fields(bug_id={bug_id}, priority={priority}, severity={severity}, "
+        f"resolution={resolution}, reset_qa_contact={reset_qa_contact}, reset_assigned_to={reset_assigned_to})"
     )
 
     updates = {}
@@ -546,6 +551,10 @@ async def update_bug_fields(
         updates["resolution"] = resolution
     if custom_fields:
         updates.update(custom_fields)
+    if reset_qa_contact:
+        updates["reset_qa_contact"] = True
+    if reset_assigned_to:
+        updates["reset_assigned_to"] = True
 
     if not updates:
         raise ToolError("At least one field must be specified")

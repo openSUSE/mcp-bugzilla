@@ -113,16 +113,20 @@ The server provides the following tools for interacting with Bugzilla:
   + **Returns**: A dictionary containing the updated bug fields
   + **Example**: `assign_bug(12345, "developer@example.com", comment="You're the expert on this component")`
 
-* **`update_bug_fields(bug_id: int, priority: str = None, severity: str = None, resolution: str = None, comment: str = "")`**: Updates various bug fields.
+* **`update_bug_fields(bug_id: int, priority: str = None, severity: str = None, resolution: str = None, custom_fields: dict = None, reset_qa_contact: bool = False, reset_assigned_to: bool = False, comment: str = "")`**: Updates various bug fields.
 
   + **Parameters**:
     - `bug_id`: The bug ID to update
     - `priority`: Priority level (e.g., `urgent`, `high`, `medium`, `low`, `unspecified`)
     - `severity`: Severity level (e.g., `urgent`, `high`, `medium`, `low`, `unspecified`)
     - `resolution`: Resolution (only for closed bugs)
+    - `custom_fields`: Dict of custom fields, e.g. `{"cf_fixed_in": "1.2.3"}`
+    - `reset_qa_contact`: If `True`, reset the QA contact to the component's default
+    - `reset_assigned_to`: If `True`, reset the assignee to the component's default
     - `comment`: Optional comment explaining the changes
   + **Returns**: A dictionary containing the updated bug fields
   + **Example**: `update_bug_fields(12345, priority="high", severity="urgent", comment="Escalating due to customer impact")`
+  + **Example**: `update_bug_fields(12345, reset_qa_contact=True)` resets the QA contact to the component default
 
 * **`add_cc_to_bug(bug_id: int, cc_email: str)`**: Adds an email address to the CC list of a bug.
 

@@ -610,3 +610,83 @@ async def test_list_attachments_filters_compose():
         bug_id=42, exclude_obsolete=True, patches_only=True, bz=bz
     )
     assert [a["id"] for a in out] == [2]  # only the non-obsolete patch
+
+
+def _update_bz():
+    """A stand-in Bugzilla client exposing only update_bug."""
+    bz = AsyncMock()
+    bz.update_bug = AsyncMock(return_value={"bugs": [{"id": 123}]})
+    return bz
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_no_reset_keys_by_default():
+    """A normal update must not ship reset_* keys when the flags are False."""
+    bz = _update_bz()
+
+    await server.update_bug_fields(bug_id=123, priority="high", bz=bz)
+
+    bz.update_bug.assert_awaited_once_with(123, {"priority": "high"}, "")
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_reset_qa_contact():
+    bz = _update_bz()
+
+    await server.update_bug_fields(bug_id=123, reset_qa_contact=True, bz=bz)
+
+    bz.update_bug.assert_awaited_once_with(123, {"reset_qa_contact": True}, "")
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_reset_assigned_to():
+    bz = _update_bz()
+
+    await server.update_bug_fields(bug_id=123, reset_assigned_to=True, bz=bz)
+
+    bz.update_bug.assert_awaited_once_with(123, {"reset_assigned_to": True}, "")
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_reset_both_with_other_fields():
+    bz = _update_bz()
+
+    await server.update_bug_fields(
+        bug_id=123,
+        priority="high",
+        reset_qa_contact=True,
+        reset_assigned_to=True,
+        comment="reset to defaults",
+        bz=bz,
+    )
+
+    bz.update_bug.assert_awaited_once_with(
+        123,
+        {
+            "priority": "high",
+            "reset_qa_contact": True,
+            "reset_assigned_to": True,
+        },
+        "reset to defaults",
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_bare_reset_is_valid():
+    """A reset-only call must satisfy the 'at least one field' guard."""
+    bz = _update_bz()
+
+    # Must not raise "At least one field must be specified".
+    await server.update_bug_fields(bug_id=123, reset_qa_contact=True, bz=bz)
+
+    bz.update_bug.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_no_fields_raises():
+    bz = _update_bz()
+
+    with pytest.raises(ToolError, match="At least one field"):
+        await server.update_bug_fields(bug_id=123, bz=bz)
+
+    bz.update_bug.assert_not_awaited()

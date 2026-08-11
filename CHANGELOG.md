@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- `update_bug_fields` gains `reset_qa_contact` and `reset_assigned_to` flags. These map to Bugzilla's native `Bug.update` booleans, so the default is resolved server-side rather than written back by the client.
+
 ## [v0.19.0] - 2026-08-11
 
 ### Added
