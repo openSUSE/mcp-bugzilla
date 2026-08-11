@@ -5,7 +5,11 @@ import pytest_asyncio
 import respx
 from httpx import Response
 
-from mcp_bugzilla.lib_bugzilla import Bugzilla, BugzillaResponseError
+from mcp_bugzilla.lib_bugzilla import (
+    Bugzilla,
+    BugzillaAPIError,
+    BugzillaResponseError,
+)
 from mcp_bugzilla.mcp_utils import is_textual, safe_filename
 
 MOCK_URL = "https://bugzilla.example.com"
@@ -826,3 +830,56 @@ async def test_bug_info_omits_field_selection_when_none(bz_client):
         q = route.calls.last.request.url.params
         assert "include_fields" not in q
         assert "exclude_fields" not in q
+
+
+@pytest.mark.asyncio
+async def test_get_product_returns_envelope(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/product").mock(
+            return_value=Response(
+                200,
+                json={
+                    "products": [
+                        {
+                            "id": 15,
+                            "name": "ProdX",
+                            "components": [
+                                {
+                                    "id": 1421,
+                                    "name": "Release Notes",
+                                    "default_assigned_to": "dev@example.com",
+                                    "default_qa_contact": "qa@example.com",
+                                    "is_active": True,
+                                }
+                            ],
+                        }
+                    ]
+                },
+            )
+        )
+
+        envelope = await bz_client.get_product(
+            "ProdX", include_fields="name,components.name"
+        )
+
+        assert envelope["products"][0]["components"][0]["name"] == "Release Notes"
+        params = route.calls.last.request.url.params
+        assert params["names"] == "ProdX"
+        assert params["include_fields"] == "name,components.name"
+
+
+@pytest.mark.asyncio
+async def test_get_product_error_body_surfaced(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/product").mock(
+            return_value=Response(
+                404,
+                json={"error": True, "code": 51, "message": "No product named 'Nope'."},
+            )
+        )
+
+        with pytest.raises(BugzillaAPIError) as exc:
+            await bz_client.get_product("Nope")
+
+        assert exc.value.code == 51
+        assert "No product named" in exc.value.message

@@ -57,6 +57,14 @@ The server provides the following tools for interacting with Bugzilla:
   - **Note on Bugzilla API parity**: `new_since` and `include_fields` mirror Bugzilla's own API parameters of the same names (`include_fields` is applied client-side here). `exclude_creators` and `limit` have no server-side Bugzilla equivalent — this server applies them client-side, as post-processing over the standard `Bug.comments` response; the underlying Bugzilla request is unmodified.
   - **Example**: `bug_comments(12345, exclude_creators="upstream-release-monitoring", limit=5)` returns the 5 most recent comments that aren't from the release-monitoring bot
 
+- **`get_component_defaults(component: str = None, product: str = None, bug_id: int = None)`**: Looks up a component's default assignee and QA contact, read from the parent product since Bugzilla has no component endpoint.
+  - **Parameters**:
+    - `component`: Component name (resolved from `bug_id` if omitted)
+    - `product`: Product the component belongs to (resolved from `bug_id` if omitted)
+    - `bug_id`: Resolve product/component from this bug instead of passing them
+  - **Returns**: A dictionary with `product`, `component`, `default_assignee`, `default_qa_contact`, `is_active`
+  - **Example**: `get_component_defaults(bug_id=12345)` returns the defaults for that bug's component. To reset a bug *to* these defaults, use `update_bug_fields(..., reset_qa_contact=True)`.
+
 
 - **`add_comment(bug_id: int, comment: str, is_private: bool = False)`**: Adds a new comment to a specified bug.
   - **Parameters**:
