@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [v0.19.0] - 2026-08-11
+
 ### Added
 - `get_bug_flags` tool and `Bugzilla.bug_flags()` — list a bug's flags with their instance ids (flags are requested explicitly via `include_fields`, since some instances omit them from the default bug view).
 - `update_bug_flag` tool — set, grant, deny, or clear a bug flag (e.g. `needinfo`, `blocker`), by name+requestee or by flag instance id.
@@ -13,6 +15,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `bug_history` gained SQL-like output controls to cut low-signal churn (bot edits, cc/flag/summary changes): `changed_fields` (keep only changes to the named fields, dropping events left with no match), `exclude_authors` (drop events by author substring), and `limit` (most recent N). `exclude_authors` and `limit` are client-side conveniences with no server-side Bugzilla equivalent; `new_since` remains a native Bugzilla parameter.
 - `bug_info` gained native Bugzilla field selection: `include_fields` and `exclude_fields` (comma-separated), forwarded unchanged to the `Bug.get` API. Lets bulk and large fetches keep only the fields needed (e.g. `include_fields="id,status,resolution,summary"`). Both are native Bugzilla parameters; default behaviour (all fields) is unchanged.
 - `list_attachments` gained filters to cut noise on bugs with many attachments: `exclude_obsolete` (drop obsolete attachments), `patches_only` (keep only patches), and `limit` (most recent N). All are client-side; there is no native Bugzilla equivalent.
+
+### Fixed
+- Surface non-JSON Bugzilla API responses: when something in front of Bugzilla (proxy, WAF, CDN) returns HTML or another non-JSON content type, the error message now includes the HTTP status, content type, and a snippet of the body instead of a cryptic `JSONDecodeError`.
+- Coerce Bugzilla integer `is_private`/`is_obsolete` flags (0/1) to proper booleans in `download_attachment` results, fixing a FastMCP schema validation error.
+
+### Changed
+- Refactored `Bugzilla` client class and `BugzillaAPIError` out of `mcp_utils.py` into a new `lib_bugzilla.py` module for better separation of concerns. `mcp_utils.py` now only contains logging and general utilities, with lazy re-exports for backward compatibility.
+
+### Chore
+- Bump `fastmcp` from 3.4.5 to 3.4.6
+- Bump `cryptography` (indirect) from 48.0.1 to 50.0.0
+- Update `uv-build` requirement to permit latest version
+
+### CI
+- Change Dependabot PR merge method to squash
+
+### Documentation
+- Correct phantom `make_bugzilla_request` reference in AGENTS.md — the helper does not exist; updated guide to describe the actual pattern (methods on the `Bugzilla` client class).
 
 ## [v0.18.0] - 2026-07-31
 
