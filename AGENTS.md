@@ -48,7 +48,6 @@ uv run ruff format --check # format
 3. Create a new branch for the release
 4. Add entry to `CHANGELOG.md` using `git diff` since the previous tag
 5. Open a PR and merge
-6. Tag and push: `git tag vX.Y.Z && git push --tags`
 
 ### For AI Agents
 
