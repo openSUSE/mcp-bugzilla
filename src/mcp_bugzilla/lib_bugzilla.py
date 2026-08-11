@@ -25,6 +25,37 @@ class BugzillaAPIError(Exception):
         )
 
 
+class BugzillaResponseError(Exception):
+    """The response body was not JSON."""
+
+    def __init__(self, response: httpx.Response):
+        self.status_code = response.status_code
+        self.content_type = response.headers.get("content-type", "unknown")
+        self.body = " ".join(response.text.split())[:200]
+        # The api_key rides in the query string; keep it out of the message.
+        url = response.request.url.copy_remove_param("api_key")
+        super().__init__(
+            f"Bugzilla returned a non-JSON response from {url} "
+            f"(HTTP {self.status_code}, content-type {self.content_type!r}, "
+            f"{len(response.content)} bytes): {self.body!r}"
+        )
+
+
+def _json_or_raise(response: httpx.Response) -> Any:
+    """Parse a JSON response, or raise showing what came back instead.
+
+    A proxy or bot check in front of Bugzilla can answer 200 with HTML. On its
+    own that only reports "line 1 column 1 (char 0)", which says nothing about
+    who replied.
+    """
+    try:
+        return response.json()
+    except ValueError as e:
+        error = BugzillaResponseError(response)
+        mcp_log.error(f"[BZ-RES] {error}")
+        raise error from e
+
+
 def _bugzilla_error_body(response: httpx.Response) -> dict[str, Any] | None:
     """Parse Bugzilla error from response body, if present."""
     try:
@@ -69,7 +100,7 @@ class Bugzilla:
         try:
             r = await self.client.get("/version")
             r.raise_for_status()
-            return r.json()["version"]
+            return _json_or_raise(r)["version"]
 
         except httpx.HTTPStatusError as e:
             mcp_log.error(
@@ -99,10 +130,10 @@ class Bugzilla:
                 r.raise_for_status()
 
             # Combine results
-            version_data = version_r.json()
-            extensions_data = extensions_r.json()
-            time_data = time_r.json()
-            parameters_data = parameters_r.json()
+            version_data = _json_or_raise(version_r)
+            extensions_data = _json_or_raise(extensions_r)
+            time_data = _json_or_raise(time_r)
+            parameters_data = _json_or_raise(parameters_r)
 
             result = {
                 "url": self.base_url,
@@ -160,7 +191,7 @@ class Bugzilla:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
             raise
 
-        envelope = r.json()
+        envelope = _json_or_raise(r)
         bugs = envelope.get("bugs", [])
         mcp_log.info(f"[BZ-RES] Retrieved {len(bugs)} bugs")
         mcp_log.debug(f"[BZ-RES] {envelope}")
@@ -188,7 +219,7 @@ class Bugzilla:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
             raise
 
-        bugs = r.json().get("bugs", [])
+        bugs = _json_or_raise(r).get("bugs", [])
         flags = bugs[0].get("flags", []) if bugs else []
         mcp_log.info(f"[BZ-RES] Retrieved {len(flags)} flags for bug {bug_id}")
         return flags
@@ -216,7 +247,7 @@ class Bugzilla:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
             raise
 
-        data = r.json().get("bugs", [])
+        data = _json_or_raise(r).get("bugs", [])
         history = data[0].get("history", []) if data else []
         mcp_log.info(f"[BZ-RES] Found {len(history)} history items")
         mcp_log.debug(f"[BZ-RES] {history}")
@@ -246,7 +277,9 @@ class Bugzilla:
             raise
 
         # The response structure is {"bugs": {"<id>": {"comments": [...]}}}
-        data = r.json().get("bugs", {}).get(str(bug_id), {}).get("comments", [])
+        data = (
+            _json_or_raise(r).get("bugs", {}).get(str(bug_id), {}).get("comments", [])
+        )
         mcp_log.info(f"[BZ-RES] Found {len(data)} comments")
         mcp_log.debug(f"[BZ-RES] {data}")
         return data
@@ -271,7 +304,7 @@ class Bugzilla:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
             raise
 
-        data = r.json()
+        data = _json_or_raise(r)
         mcp_log.info("[BZ-RES] Comment added successfully")
         mcp_log.debug(f"[BZ-RES] {data}")
         return data
@@ -304,7 +337,7 @@ class Bugzilla:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
             raise
 
-        envelope = r.json()
+        envelope = _json_or_raise(r)
         bugs = envelope.get("bugs", [])
         mcp_log.info(f"[BZ-RES] Found {len(bugs)} bugs")
         return envelope
@@ -338,7 +371,7 @@ class Bugzilla:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
             raise
 
-        data = r.json()
+        data = _json_or_raise(r)
         mcp_log.info("[BZ-RES] Bug updated successfully")
         mcp_log.debug(f"[BZ-RES] {data}")
         return data
@@ -365,7 +398,7 @@ class Bugzilla:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
             raise
 
-        data = r.json()
+        data = _json_or_raise(r)
         mcp_log.info(f"[BZ-RES] Created bug {data.get('id')}")
         mcp_log.debug(f"[BZ-RES] {data}")
         return data
@@ -392,7 +425,7 @@ class Bugzilla:
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
             raise
 
-        data = r.json()
+        data = _json_or_raise(r)
         mcp_log.info(f"[BZ-RES] Attachment(s) {data.get('ids')} added to bug {bug_id}")
         mcp_log.debug(f"[BZ-RES] {data}")
         return data
@@ -415,7 +448,7 @@ class Bugzilla:
             raise
 
         # /bug/{id}/attachment returns {"bugs": {"<bug_id>": [ {att}, ... ]}}
-        attachments = r.json().get("bugs", {}).get(str(bug_id), [])
+        attachments = _json_or_raise(r).get("bugs", {}).get(str(bug_id), [])
         mcp_log.info(f"[BZ-RES] Bug {bug_id} has {len(attachments)} attachment(s)")
         return attachments
 
@@ -438,7 +471,7 @@ class Bugzilla:
             raise
 
         # /bug/attachment/{id} returns {"attachments": {"<attachment_id>": {att}}}
-        attachment = r.json().get("attachments", {}).get(str(attachment_id))
+        attachment = _json_or_raise(r).get("attachments", {}).get(str(attachment_id))
         if attachment is None:
             raise ValueError(f"Attachment {attachment_id} not found")
         mcp_log.info(
