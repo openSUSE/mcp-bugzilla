@@ -610,3 +610,240 @@ async def test_list_attachments_filters_compose():
         bug_id=42, exclude_obsolete=True, patches_only=True, bz=bz
     )
     assert [a["id"] for a in out] == [2]  # only the non-obsolete patch
+
+
+def _update_bz():
+    """A stand-in Bugzilla client exposing only update_bug."""
+    bz = AsyncMock()
+    bz.update_bug = AsyncMock(return_value={"bugs": [{"id": 123}]})
+    return bz
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_no_reset_keys_by_default():
+    """A normal update must not ship reset_* keys when the flags are False."""
+    bz = _update_bz()
+
+    await server.update_bug_fields(bug_id=123, priority="high", bz=bz)
+
+    bz.update_bug.assert_awaited_once_with(123, {"priority": "high"}, "")
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_reset_qa_contact():
+    bz = _update_bz()
+
+    await server.update_bug_fields(bug_id=123, reset_qa_contact=True, bz=bz)
+
+    bz.update_bug.assert_awaited_once_with(123, {"reset_qa_contact": True}, "")
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_reset_assigned_to():
+    bz = _update_bz()
+
+    await server.update_bug_fields(bug_id=123, reset_assigned_to=True, bz=bz)
+
+    bz.update_bug.assert_awaited_once_with(123, {"reset_assigned_to": True}, "")
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_reset_both_with_other_fields():
+    bz = _update_bz()
+
+    await server.update_bug_fields(
+        bug_id=123,
+        priority="high",
+        reset_qa_contact=True,
+        reset_assigned_to=True,
+        comment="reset to defaults",
+        bz=bz,
+    )
+
+    bz.update_bug.assert_awaited_once_with(
+        123,
+        {
+            "priority": "high",
+            "reset_qa_contact": True,
+            "reset_assigned_to": True,
+        },
+        "reset to defaults",
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_bare_reset_is_valid():
+    """A reset-only call must satisfy the 'at least one field' guard."""
+    bz = _update_bz()
+
+    await server.update_bug_fields(bug_id=123, reset_qa_contact=True, bz=bz)
+
+    bz.update_bug.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_no_fields_raises():
+    bz = _update_bz()
+
+    with pytest.raises(ToolError, match="At least one field"):
+        await server.update_bug_fields(bug_id=123, bz=bz)
+
+    bz.update_bug.assert_not_awaited()
+
+
+def _product_envelope():
+    # Bugzilla's key is default_assigned_to, not default_assignee.
+    return {
+        "products": [
+            {
+                "id": 15,
+                "name": "ProdX",
+                "components": [
+                    {
+                        "name": "Release Notes",
+                        "default_assigned_to": "dev@example.com",
+                        "default_qa_contact": "qa@example.com",
+                        "is_active": True,
+                    }
+                ],
+            }
+        ]
+    }
+
+
+def _product_bz(envelope=None):
+    bz = AsyncMock()
+    bz.get_product = AsyncMock(
+        return_value=envelope if envelope is not None else _product_envelope()
+    )
+    return bz
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_explicit_product():
+    bz = _product_bz()
+
+    result = await server.get_component_defaults(
+        component="Release Notes", product="ProdX", bz=bz
+    )
+
+    assert result["default_qa_contact"] == "qa@example.com"
+    assert result["default_assignee"] == "dev@example.com"
+    assert result["is_active"] is True
+    bz.get_product.assert_awaited_once()
+    assert bz.get_product.await_args.args[0] == "ProdX"
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_resolves_from_bug_id():
+    bz = _product_bz()
+    bz.bug_info = AsyncMock(
+        return_value={"bugs": [{"product": "ProdX", "component": "Release Notes"}]}
+    )
+
+    result = await server.get_component_defaults(bug_id=42, bz=bz)
+
+    assert result["product"] == "ProdX"
+    assert result["component"] == "Release Notes"
+    assert result["default_assignee"] == "dev@example.com"
+    assert result["default_qa_contact"] == "qa@example.com"
+    bz.bug_info.assert_awaited_once_with({42}, include_fields="product,component")
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_explicit_product_wins_over_bug_id():
+    """An explicit product/component must skip the bug lookup entirely."""
+    bz = _product_bz()
+    bz.bug_info = AsyncMock()
+
+    result = await server.get_component_defaults(
+        component="Release Notes", product="ProdX", bug_id=42, bz=bz
+    )
+
+    assert result["default_assignee"] == "dev@example.com"
+    bz.bug_info.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_absent_defaults_are_none():
+    """A component missing the default keys yields None, not KeyError."""
+    bz = _product_bz({"products": [{"components": [{"name": "Release Notes"}]}]})
+
+    result = await server.get_component_defaults(
+        component="Release Notes", product="ProdX", bz=bz
+    )
+
+    assert result["default_assignee"] is None
+    assert result["default_qa_contact"] is None
+    assert result["is_active"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_empty_string_defaults_are_none():
+    """Bugzilla reports an unset contact as "", which must surface as None."""
+    bz = _product_bz(
+        {
+            "products": [
+                {
+                    "components": [
+                        {
+                            "name": "Release Notes",
+                            "default_assigned_to": "dev@example.com",
+                            "default_qa_contact": "",
+                            "is_active": False,
+                        }
+                    ]
+                }
+            ]
+        }
+    )
+
+    result = await server.get_component_defaults(
+        component="Release Notes", product="ProdX", bz=bz
+    )
+
+    assert result["default_qa_contact"] is None
+    assert result["default_assignee"] == "dev@example.com"
+    # False is a real value, not a missing one.
+    assert result["is_active"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_bug_not_found():
+    bz = _product_bz()
+    bz.bug_info = AsyncMock(return_value={"bugs": []})
+
+    with pytest.raises(ToolError, match="Bug 42 not found"):
+        await server.get_component_defaults(bug_id=42, bz=bz)
+
+    bz.get_product.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_product_not_found():
+    bz = _product_bz({"products": []})
+
+    with pytest.raises(ToolError, match="Product 'Nope' not found"):
+        await server.get_component_defaults(
+            component="Release Notes", product="Nope", bz=bz
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_component_not_found():
+    bz = _product_bz()
+
+    with pytest.raises(ToolError, match="not found in product"):
+        await server.get_component_defaults(
+            component="Nonexistent", product="ProdX", bz=bz
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_requires_product_or_bug_id():
+    bz = _product_bz()
+
+    with pytest.raises(ToolError, match="product.*or.*bug_id"):
+        await server.get_component_defaults(component="Release Notes", bz=bz)
+
+    bz.get_product.assert_not_awaited()

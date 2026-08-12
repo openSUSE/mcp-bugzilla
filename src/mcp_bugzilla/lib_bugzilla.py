@@ -197,6 +197,46 @@ class Bugzilla:
         mcp_log.debug(f"[BZ-RES] {envelope}")
         return envelope
 
+    async def get_product(
+        self, name: str, include_fields: str | None = None
+    ) -> dict[str, Any]:
+        """Fetch a product by name, with its components and their defaults.
+
+        Bugzilla has no component endpoint: component defaults (assignee, QA
+        contact) are only exposed nested under the parent product. The full
+        payload is large, so pass ``include_fields`` (dotted paths work, e.g.
+        ``components.default_assigned_to``) to keep only what is needed.
+        """
+        params = {"names": name}
+        if include_fields:
+            params["include_fields"] = include_fields
+        mcp_log.info(f"[BZ-REQ] GET {self.api_url}/product params={params}")
+
+        try:
+            r = await self.client.get("/product", params=params)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            bz_error = _bugzilla_error_body(e.response)
+            if bz_error is not None:
+                mcp_log.error(
+                    f"[BZ-RES] Failed: {e.response.status_code} "
+                    f"code={bz_error.get('code')} {bz_error['message']}"
+                )
+                raise BugzillaAPIError(e.response.status_code, bz_error) from e
+            mcp_log.error(
+                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
+            )
+            raise
+        except httpx.RequestError as e:
+            mcp_log.error(f"[BZ-RES] Network Error: {e}")
+            raise
+
+        envelope = _json_or_raise(r)
+        products = envelope.get("products", [])
+        mcp_log.info(f"[BZ-RES] Retrieved {len(products)} products")
+        mcp_log.debug(f"[BZ-RES] {envelope}")
+        return envelope
+
     async def bug_flags(self, bug_id: int) -> list[dict[str, Any]]:
         """Return the flags currently set on a bug, with their instance ids.
 

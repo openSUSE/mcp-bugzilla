@@ -144,6 +144,107 @@ async def bug_info(
         raise ToolError(f"Failed to fetch bug info\nReason: {e}")
 
 
+class ComponentDefaults(TypedDict):
+    """A component's default assignee and QA contact.
+
+    ``default_assignee`` / ``default_qa_contact`` are ``None`` both when the
+    component has none set and when the API key cannot see them. Bugzilla
+    reports an unset contact as an empty string; that is normalised to ``None``
+    so the two cases read alike.
+    """
+
+    product: str
+    component: str
+    default_assignee: str | None
+    default_qa_contact: str | None
+    is_active: bool | None
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
+async def get_component_defaults(
+    component: str | None = None,
+    product: str | None = None,
+    bug_id: int | None = None,
+    bz: Bugzilla = _get_bz,
+) -> ComponentDefaults:
+    """Look up a component's default assignee and QA contact.
+
+    Bugzilla has no component endpoint, so the defaults come from the parent
+    product. Pass ``product`` and ``component``, or a ``bug_id`` to resolve them
+    from that bug; explicit values win. To reset a bug *to* these defaults, use
+    ``update_bug_fields`` with ``reset_qa_contact`` / ``reset_assigned_to``.
+
+    Args:
+        component: Component name (resolved from bug_id if omitted)
+        product: Product the component belongs to (resolved from bug_id if omitted)
+        bug_id: Resolve product/component from this bug instead of passing them
+    """
+    mcp_log.info(
+        f"[LLM-REQ] get_component_defaults(component={component!r}, "
+        f"product={product!r}, bug_id={bug_id})"
+    )
+
+    try:
+        resolved_from_bug = False
+        if bug_id is not None and (not product or not component):
+            envelope = await bz.bug_info({bug_id}, include_fields="product,component")
+            bugs = envelope.get("bugs", [])
+            if not bugs:
+                raise ToolError(f"Bug {bug_id} not found")
+            product = product or bugs[0].get("product")
+            component = component or bugs[0].get("component")
+            resolved_from_bug = True
+
+        if not product:
+            raise ToolError(
+                f"Bug {bug_id} returned no product field"
+                if resolved_from_bug
+                else "Either `product` or `bug_id` must be supplied"
+            )
+        if not component:
+            raise ToolError(
+                f"Bug {bug_id} returned no component field; pass `component` explicitly"
+                if resolved_from_bug
+                else "Either `component` or `bug_id` must be supplied"
+            )
+
+        # The full product payload is ~10x larger and carries flag_types,
+        # milestones and versions this tool never reads.
+        envelope = await bz.get_product(
+            product,
+            include_fields=(
+                "name,components.name,components.default_assigned_to,"
+                "components.default_qa_contact,components.is_active"
+            ),
+        )
+        products = envelope.get("products", [])
+        if not products:
+            raise ToolError(f"Product {product!r} not found")
+
+        components = products[0].get("components", [])
+        for comp in components:
+            if comp.get("name") == component:
+                return ComponentDefaults(
+                    product=product,
+                    component=component,
+                    # Bugzilla's key is default_assigned_to, not default_assignee,
+                    # and an unset contact comes back as "" rather than null.
+                    default_assignee=comp.get("default_assigned_to") or None,
+                    default_qa_contact=comp.get("default_qa_contact") or None,
+                    is_active=comp.get("is_active"),
+                )
+
+        available = ", ".join(c.get("name", "?") for c in components)
+        raise ToolError(
+            f"Component {component!r} not found in product {product!r}. "
+            f"Available components: {available}"
+        )
+    except ToolError:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(f"Failed to fetch component defaults\n{e}")
+
+
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bug_history(
     id: int,
@@ -520,6 +621,8 @@ async def update_bug_fields(
     severity: str | None = None,
     resolution: str | None = None,
     custom_fields: dict[str, Any] | None = None,
+    reset_qa_contact: bool = False,
+    reset_assigned_to: bool = False,
     comment: str = "",
     bz: Bugzilla = _get_bz,
 ) -> dict[str, Any]:
@@ -531,10 +634,13 @@ async def update_bug_fields(
         severity: Severity (e.g., urgent, high, medium, low, unspecified)
         resolution: Resolution (e.g., FIXED, WONTFIX, NOTABUG, DUPLICATE) - only for closed bugs
         custom_fields: Dict of custom fields e.g. {"cf_fixed_in": "1.2.3"}
+        reset_qa_contact: Reset the QA contact to the component's default
+        reset_assigned_to: Reset the assignee to the component's default
         comment: Optional comment explaining the changes
     """
     mcp_log.info(
-        f"[LLM-REQ] update_bug_fields(bug_id={bug_id}, priority={priority}, severity={severity}, resolution={resolution})"
+        f"[LLM-REQ] update_bug_fields(bug_id={bug_id}, priority={priority}, severity={severity}, "
+        f"resolution={resolution}, reset_qa_contact={reset_qa_contact}, reset_assigned_to={reset_assigned_to})"
     )
 
     updates = {}
@@ -546,6 +652,10 @@ async def update_bug_fields(
         updates["resolution"] = resolution
     if custom_fields:
         updates.update(custom_fields)
+    if reset_qa_contact:
+        updates["reset_qa_contact"] = True
+    if reset_assigned_to:
+        updates["reset_assigned_to"] = True
 
     if not updates:
         raise ToolError("At least one field must be specified")
