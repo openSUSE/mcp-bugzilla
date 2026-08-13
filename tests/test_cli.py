@@ -242,3 +242,58 @@ def test_invalid_bugzilla_auth_mode_env_exits(monkeypatch, captured_mcp_log):
     assert any("Invalid --bugzilla-auth-mode" in r.message for r in critical_logs), (
         f"Expected critical log for invalid bugzilla-auth-mode, got: {[r.message for r in critical_logs]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# --tool-search flag
+# ---------------------------------------------------------------------------
+
+
+def test_tool_search_defaults_to_false(monkeypatch):
+    """Without --tool-search, the flag should default to False."""
+    from mcp_bugzilla import server
+
+    _run_main(
+        monkeypatch,
+        ["--bugzilla-server", "https://bugzilla.example.com"],
+    )
+    assert server.cli_args.tool_search is False
+
+
+def test_tool_search_flag_sets_true(monkeypatch):
+    """With --tool-search, the flag should be True."""
+    from mcp_bugzilla import server
+
+    _run_main(
+        monkeypatch,
+        [
+            "--bugzilla-server",
+            "https://bugzilla.example.com",
+            "--tool-search",
+        ],
+    )
+    assert server.cli_args.tool_search is True
+
+
+def test_tool_search_env_var_sets_true(monkeypatch):
+    """Setting MCP_TOOL_SEARCH=true should enable the flag."""
+    from mcp_bugzilla import server
+
+    _run_main(
+        monkeypatch,
+        ["--bugzilla-server", "https://bugzilla.example.com"],
+        env={"MCP_TOOL_SEARCH": "true"},
+    )
+    assert server.cli_args.tool_search is True
+
+
+def test_tool_search_env_var_false_no_effect(monkeypatch):
+    """Setting MCP_TOOL_SEARCH=false (or anything else) should NOT enable it."""
+    from mcp_bugzilla import server
+
+    _run_main(
+        monkeypatch,
+        ["--bugzilla-server", "https://bugzilla.example.com"],
+        env={"MCP_TOOL_SEARCH": "false"},
+    )
+    assert server.cli_args.tool_search is False

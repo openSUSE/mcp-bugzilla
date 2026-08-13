@@ -82,6 +82,13 @@ def main():
     )
 
     parser.add_argument(
+        "--tool-search",
+        action="store_true",
+        default=os.getenv("MCP_TOOL_SEARCH", "false").lower() == "true",
+        help="Collapse all tools into discovery + execute meta-tools (search, get_schemas, execute). Environment variable MCP_TOOL_SEARCH=true can also be used.",
+    )
+
+    parser.add_argument(
         "--transport",
         type=str,
         choices=["http", "stdio"],

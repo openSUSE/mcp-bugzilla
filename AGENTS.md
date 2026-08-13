@@ -14,40 +14,13 @@ This document describes common development tasks for the `mcp-bugzilla` project.
 ## Setup
 
 ```bash
+# sync dependencies
 uv sync
-```
-
-## Running the Server
-
-```bash
+# Running the Server
 uv run mcp-bugzilla --bugzilla-server https://bugzilla.example.com
-```
-
-Optional flags:
-
-| Flag | Description |
-|------|-------------|
-| `--host` | Listen address (default: `127.0.0.1`) |
-| `--port` | Listen port (default: `8000`) |
-| `--mcp-auth-header` | Header name for client API key (disabled by default; env: `MCP_AUTH_HEADER`) |
-| `--bugzilla-api-key` | Static Bugzilla API key; if omitted access is anonymous (env: `BUGZILLA_API_KEY`) |
-| `--bugzilla-auth-mode` | How to authenticate with Bugzilla: `query` (default) or `bearer` for `Authorization: Bearer` (env: `BUGZILLA_AUTH_MODE`) |
-| `--read-only` | Disable all write tools |
-
-**Deprecated flags** (still work but log a warning — migrate to the replacements above):
-
-| Deprecated Flag | Replacement |
-|-----------------|-------------|
-| `--api-key-header` / `MCP_API_KEY_HEADER` | `--mcp-auth-header` / `MCP_AUTH_HEADER` |
-| `--api-key` | `--bugzilla-api-key` / `BUGZILLA_API_KEY` |
-| `--use-auth-header` | `--bugzilla-auth-mode bearer` |
-
-## Running Tests
-
-```bash
+# run tests
 uv run pytest
 ```
-
 Tests use `respx` to mock HTTP calls and `pytest-asyncio` for async test support.
 
 ## Adding a New Tool

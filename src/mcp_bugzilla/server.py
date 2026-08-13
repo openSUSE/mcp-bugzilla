@@ -18,7 +18,6 @@ from typing import Any, Literal, TypedDict
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
 from fastmcp.exceptions import PromptError, ResourceError, ToolError
-
 from .mcp_utils import Bugzilla, is_textual, mcp_log, safe_filename
 
 # The FastMCP instance
@@ -927,6 +926,20 @@ def start():
     )
     # Ensure base_url doesn't have trailing slash for consistency
     base_url = base_url.removesuffix("/")
+
+    # Optionally enable tool-search transform
+    if getattr(cli_args, "tool_search", False):
+        try:
+            from fastmcp.experimental.transforms.code_mode import CodeMode
+
+            mcp.add_transform(CodeMode())
+            mcp_log.info("Tool search transform enabled — tools collapsed into search, get_schemas, and execute")
+        except ImportError:
+            mcp_log.warning(
+                "--tool-search flag was passed but the required dependency "
+                "is not installed (install with 'pip install fastmcp[code-mode]'). "
+                "Tool search will not be enabled."
+            )
 
     # Seletively disable components before running the server
     disable_components_selectively()
