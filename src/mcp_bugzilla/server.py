@@ -18,7 +18,7 @@ from typing import Any, Literal, TypedDict
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
 from fastmcp.exceptions import PromptError, ResourceError, ToolError
-from .mcp_utils import Bugzilla, is_textual, mcp_log, safe_filename
+from .mcp_utils import is_textual, mcp_log, safe_filename
 
 from .lib_bugzilla import Bugzilla
 
@@ -1269,7 +1269,9 @@ def start():
             from fastmcp.experimental.transforms.code_mode import CodeMode
 
             mcp.add_transform(CodeMode())
-            mcp_log.info("Tool search transform enabled — tools collapsed into search, get_schemas, and execute")
+            mcp_log.info(
+                "Tool search transform enabled — tools collapsed into search, get_schemas, and execute"
+            )
         except ImportError:
             mcp_log.warning(
                 "--tool-search flag was passed but the required dependency "
