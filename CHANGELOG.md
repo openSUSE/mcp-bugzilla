@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- `update_bug_fields` gains `reset_qa_contact` and `reset_assigned_to` flags. These map to Bugzilla's native `Bug.update` booleans, so the default is resolved server-side rather than written back by the client.
+- New read-only `get_component_defaults` tool returns a component's default assignee and QA contact. Bugzilla has no component endpoint, so the defaults are read from the parent product (new `Bugzilla.get_product` helper). Takes an explicit `product`/`component`, or a `bug_id` to resolve them from a bug.
+
+## [v0.19.0] - 2026-08-11
+
+### Added
+- `get_bug_flags` tool and `Bugzilla.bug_flags()` — list a bug's flags with their instance ids (flags are requested explicitly via `include_fields`, since some instances omit them from the default bug view).
+- `update_bug_flag` tool — set, grant, deny, or clear a bug flag (e.g. `needinfo`, `blocker`), by name+requestee or by flag instance id.
+- `bug_comments` gained SQL-like output controls to avoid flooding the context on large threads: `include_fields` (per-comment field projection, lean default), `exclude_creators` (drop comments by creator substring, e.g. bot noise), and `limit` (most recent N). Note: the `include_fields` default now returns a lean field set; pass `include_fields=None` for the full objects.
+- `bug_history` gained SQL-like output controls to cut low-signal churn (bot edits, cc/flag/summary changes): `changed_fields` (keep only changes to the named fields, dropping events left with no match), `exclude_authors` (drop events by author substring), and `limit` (most recent N). `exclude_authors` and `limit` are client-side conveniences with no server-side Bugzilla equivalent; `new_since` remains a native Bugzilla parameter.
+- `bug_info` gained native Bugzilla field selection: `include_fields` and `exclude_fields` (comma-separated), forwarded unchanged to the `Bug.get` API. Lets bulk and large fetches keep only the fields needed (e.g. `include_fields="id,status,resolution,summary"`). Both are native Bugzilla parameters; default behaviour (all fields) is unchanged.
+- `list_attachments` gained filters to cut noise on bugs with many attachments: `exclude_obsolete` (drop obsolete attachments), `patches_only` (keep only patches), and `limit` (most recent N). All are client-side; there is no native Bugzilla equivalent.
+
+### Fixed
+- Surface non-JSON Bugzilla API responses: when something in front of Bugzilla (proxy, WAF, CDN) returns HTML or another non-JSON content type, the error message now includes the HTTP status, content type, and a snippet of the body instead of a cryptic `JSONDecodeError`.
+- Coerce Bugzilla integer `is_private`/`is_obsolete` flags (0/1) to proper booleans in `download_attachment` results, fixing a FastMCP schema validation error.
+
+### Changed
+- Refactored `Bugzilla` client class and `BugzillaAPIError` out of `mcp_utils.py` into a new `lib_bugzilla.py` module for better separation of concerns. `mcp_utils.py` now only contains logging and general utilities, with lazy re-exports for backward compatibility.
+
+### Chore
+- Bump `fastmcp` from 3.4.5 to 3.4.6
+- Bump `cryptography` (indirect) from 48.0.1 to 50.0.0
+- Update `uv-build` requirement to permit latest version
+
+### CI
+- Change Dependabot PR merge method to squash
+
+### Documentation
+- Correct phantom `make_bugzilla_request` reference in AGENTS.md — the helper does not exist; updated guide to describe the actual pattern (methods on the `Bugzilla` client class).
+
 ## [v0.18.0] - 2026-07-31
 
 This release is same as previous one but bumped due to premature pypi release 
@@ -243,7 +275,7 @@ Several New Improvements by [@SanthoshSiddegowda](https://github.com/SanthoshSid
   *   **Async Refactor**: Switched from synchronous `httpx` logic to `httpx.AsyncClient` across `mcp_utils.py` and `server.py`. All MCP tools (`bug_info`, `bug_comments`, etc.) are now `async` functions, allowing for non-blocking concurrent request handling.
   *   **Thread-Safety**: Introduced `contextvars` to manage the `Bugzilla` client instance per request context. This ensures that the server is safe for concurrent use and prevents race conditions with API keys or session state.
   *   **Resource Management**: Implemented proper cleanup logic in the middleware to ensure the HTTP client is closed after every request.
-  *   **Unit Tests**: Added a new test suite in `tests/test_mcp_utils.py` covering core functionalities (`bug_info`, `bug_comments`, `add_comment`, `quicksearch`).
+  *   **Unit Tests**: Added a new test suite in `tests/test_lib_bugzilla.py` covering core functionalities (`bug_info`, `bug_comments`, `add_comment`, `quicksearch`).
   *   **Mocking**: Utilized `respx` to mock external Bugzilla API calls, ensuring tests are fast and deterministic without requiring a live server.
   *   **CI/CD**: Added a GitHub Actions workflow (`.github/workflows/tests.yml`) to automatically run tests on every push and pull request.
   *   **Status Badge**: Added a \"Tests\" workflow status badge to the `README.md`.

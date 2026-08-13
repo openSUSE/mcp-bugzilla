@@ -20,6 +20,8 @@ from fastmcp.dependencies import CurrentHeaders, Depends
 from fastmcp.exceptions import PromptError, ResourceError, ToolError
 from .mcp_utils import Bugzilla, is_textual, mcp_log, safe_filename
 
+from .lib_bugzilla import Bugzilla
+
 # The FastMCP instance
 mcp = FastMCP("Bugzilla")
 
@@ -100,36 +102,210 @@ _get_bz = Depends(get_bz)
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
-async def bug_info(bug_ids: set[int], bz: Bugzilla = _get_bz) -> dict[str, Any]:
-    """Returns the entire information for one or more bugzilla bug ids."""
+async def bug_info(
+    bug_ids: set[int],
+    include_fields: str | None = None,
+    exclude_fields: str | None = None,
+    bz: Bugzilla = _get_bz,
+) -> dict[str, Any]:
+    """Returns information for one or more bugzilla bug ids.
 
-    mcp_log.info(f"[LLM-REQ] bug_info(ids={bug_ids})")
+    By default every field is returned. For large or bulk fetches, use
+    Bugzilla's native field selection (both are forwarded to Bug.get):
+
+      include_fields  Comma-separated fields to return. Supports field groups
+                      and the special values _default, _all, _extra. For the
+                      leanest response request only scalar fields, e.g.
+                      "id,status,resolution,summary". Note: requesting a user
+                      field (assigned_to, creator, cc, qa_contact) also returns
+                      its verbose *_detail object.
+      exclude_fields  Comma-separated fields to drop. To remove a user-object
+                      expansion, exclude BOTH the base field and its *_detail
+                      together, e.g. "cc,cc_detail" -- excluding the *_detail
+                      alone has no effect, because Bugzilla re-attaches it while
+                      the base field is present.
+    """
+
+    mcp_log.info(
+        f"[LLM-REQ] bug_info(ids={bug_ids}, include_fields={include_fields}, "
+        f"exclude_fields={exclude_fields})"
+    )
 
     if not bug_ids:
         raise ToolError("No bug IDs provided")
 
     try:
-        result = await bz.bug_info(bug_ids)
+        result = await bz.bug_info(
+            bug_ids, include_fields=include_fields, exclude_fields=exclude_fields
+        )
         return result
 
     except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to fetch bug info\nReason: {e}")
 
 
+class ComponentDefaults(TypedDict):
+    """A component's default assignee and QA contact.
+
+    ``default_assignee`` / ``default_qa_contact`` are ``None`` both when the
+    component has none set and when the API key cannot see them. Bugzilla
+    reports an unset contact as an empty string; that is normalised to ``None``
+    so the two cases read alike.
+    """
+
+    product: str
+    component: str
+    default_assignee: str | None
+    default_qa_contact: str | None
+    is_active: bool | None
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
+async def get_component_defaults(
+    component: str | None = None,
+    product: str | None = None,
+    bug_id: int | None = None,
+    bz: Bugzilla = _get_bz,
+) -> ComponentDefaults:
+    """Look up a component's default assignee and QA contact.
+
+    Bugzilla has no component endpoint, so the defaults come from the parent
+    product. Pass ``product`` and ``component``, or a ``bug_id`` to resolve them
+    from that bug; explicit values win. To reset a bug *to* these defaults, use
+    ``update_bug_fields`` with ``reset_qa_contact`` / ``reset_assigned_to``.
+
+    Args:
+        component: Component name (resolved from bug_id if omitted)
+        product: Product the component belongs to (resolved from bug_id if omitted)
+        bug_id: Resolve product/component from this bug instead of passing them
+    """
+    mcp_log.info(
+        f"[LLM-REQ] get_component_defaults(component={component!r}, "
+        f"product={product!r}, bug_id={bug_id})"
+    )
+
+    try:
+        resolved_from_bug = False
+        if bug_id is not None and (not product or not component):
+            envelope = await bz.bug_info({bug_id}, include_fields="product,component")
+            bugs = envelope.get("bugs", [])
+            if not bugs:
+                raise ToolError(f"Bug {bug_id} not found")
+            product = product or bugs[0].get("product")
+            component = component or bugs[0].get("component")
+            resolved_from_bug = True
+
+        if not product:
+            raise ToolError(
+                f"Bug {bug_id} returned no product field"
+                if resolved_from_bug
+                else "Either `product` or `bug_id` must be supplied"
+            )
+        if not component:
+            raise ToolError(
+                f"Bug {bug_id} returned no component field; pass `component` explicitly"
+                if resolved_from_bug
+                else "Either `component` or `bug_id` must be supplied"
+            )
+
+        # The full product payload is ~10x larger and carries flag_types,
+        # milestones and versions this tool never reads.
+        envelope = await bz.get_product(
+            product,
+            include_fields=(
+                "name,components.name,components.default_assigned_to,"
+                "components.default_qa_contact,components.is_active"
+            ),
+        )
+        products = envelope.get("products", [])
+        if not products:
+            raise ToolError(f"Product {product!r} not found")
+
+        components = products[0].get("components", [])
+        for comp in components:
+            if comp.get("name") == component:
+                return ComponentDefaults(
+                    product=product,
+                    component=component,
+                    # Bugzilla's key is default_assigned_to, not default_assignee,
+                    # and an unset contact comes back as "" rather than null.
+                    default_assignee=comp.get("default_assigned_to") or None,
+                    default_qa_contact=comp.get("default_qa_contact") or None,
+                    is_active=comp.get("is_active"),
+                )
+
+        available = ", ".join(c.get("name", "?") for c in components)
+        raise ToolError(
+            f"Component {component!r} not found in product {product!r}. "
+            f"Available components: {available}"
+        )
+    except ToolError:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(f"Failed to fetch component defaults\n{e}")
+
+
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bug_history(
     id: int,
     new_since: datetime | None = None,
+    changed_fields: str | None = None,
+    exclude_authors: str | None = None,
+    limit: int | None = None,
     bz: Bugzilla = _get_bz,
 ) -> list[dict[str, Any]]:
     """Returns the history of given bug id.
-    new_since allows filtering history newer than the given date.
+
+    A bug's history is often dominated by low-signal churn (repeated bot
+    edits, cc-list changes, flag flips). These SQL-like controls keep only
+    the change events that matter:
+
+      changed_fields   Comma-separated Bugzilla field names; keep only changes
+                       to these fields, dropping events left with no matching
+                       change -- e.g. "status,resolution,assigned_to" to see
+                       only lifecycle changes and hide cc/summary/flag churn.
+      exclude_authors  Comma-separated substrings; drop events whose author
+                       matches any -- e.g. "upstream-release-monitoring" to
+                       hide release-monitoring bot edits.
+      limit            Return only the most recent N events (chronological
+                       order is preserved).
+      new_since        Only history newer than the given date.
     """
 
-    mcp_log.info(f"[LLM-REQ] bug_history(id={id}, new_since={new_since})")
+    mcp_log.info(
+        f"[LLM-REQ] bug_history(id={id}, new_since={new_since}, "
+        f"changed_fields={changed_fields}, exclude_authors={exclude_authors}, "
+        f"limit={limit})"
+    )
 
     try:
         history = await bz.bug_history(id, new_since=new_since)
+
+        # WHERE who NOT LIKE any(exclude_authors)
+        if exclude_authors:
+            patterns = [p.strip() for p in exclude_authors.split(",") if p.strip()]
+            history = [
+                h
+                for h in history
+                if not any(p in (h.get("who") or "") for p in patterns)
+            ]
+
+        # WHERE field_name IN (changed_fields); drop events left with no match
+        if changed_fields:
+            wanted = {f.strip() for f in changed_fields.split(",") if f.strip()}
+            pruned = []
+            for h in history:
+                kept = [
+                    c for c in h.get("changes", []) if c.get("field_name") in wanted
+                ]
+                if kept:
+                    pruned.append({**h, "changes": kept})
+            history = pruned
+
+        # LIMIT to the most recent N (chronological order preserved)
+        if limit and limit > 0:
+            history = history[-limit:]
+
         mcp_log.info(f"[LLM-RES] Returning {len(history)} history items")
         return history
     except Exception as e:  # noqa: BLE001
@@ -141,30 +317,63 @@ async def bug_comments(
     id: int,
     include_private_comments: bool = False,
     new_since: datetime | None = None,
+    include_fields: str | None = "count,id,creator,creation_time,text,attachment_id",
+    exclude_creators: str | None = None,
+    limit: int | None = None,
     bz: Bugzilla = _get_bz,
 ) -> list[dict[str, Any]]:
-    """Returns the comments of given bug id
-    Private comments are not included by default
-    but can be explicitly requested.
-    new_since allows filtering comments newer than the given date.
+    """Returns the comments of given bug id.
+
+    Comment threads on long-lived bugs can be very large (hundreds of automated
+    comments), so this tool exposes SQL-like controls to return only what is
+    needed and avoid flooding the context window:
+
+      include_fields    Comma-separated field names to keep per comment
+                        (default: count,id,creator,creation_time,text,attachment_id).
+                        Pass None to return every field.
+      exclude_creators  Comma-separated substrings; drop comments whose creator
+                        matches any -- e.g. "upstream-release-monitoring" to hide
+                        release-monitoring/scratch-build bot noise.
+      limit             Return only the most recent N comments (chronological
+                        order is preserved).
+      new_since         Only comments newer than the given date.
+      include_private_comments  Include private comments (default: False).
     """
 
     mcp_log.info(
-        f"[LLM-REQ] bug_comments(id={id}, include_private_comments={include_private_comments}, new_since={new_since})"
+        f"[LLM-REQ] bug_comments(id={id}, "
+        f"include_private_comments={include_private_comments}, new_since={new_since}, "
+        f"include_fields={include_fields}, exclude_creators={exclude_creators}, "
+        f"limit={limit})"
     )
 
     try:
-        all_comments = await bz.bug_comments(id, new_since=new_since)
+        comments = await bz.bug_comments(id, new_since=new_since)
 
-        if include_private_comments:
-            mcp_log.info(
-                f"[LLM-RES] Returning {len(all_comments)} comments (including private)"
-            )
-            return all_comments
+        # WHERE is_private = false (unless explicitly requested)
+        if not include_private_comments:
+            comments = [c for c in comments if not c.get("is_private", False)]
 
-        public_comments = [c for c in all_comments if not c.get("is_private", False)]
-        mcp_log.info(f"[LLM-RES] Returning {len(public_comments)} public comments")
-        return public_comments
+        # WHERE creator NOT LIKE any(exclude_creators)
+        if exclude_creators:
+            patterns = [p.strip() for p in exclude_creators.split(",") if p.strip()]
+            comments = [
+                c
+                for c in comments
+                if not any(p in (c.get("creator") or "") for p in patterns)
+            ]
+
+        # LIMIT to the most recent N (chronological order preserved)
+        if limit and limit > 0:
+            comments = comments[-limit:]
+
+        # SELECT include_fields
+        if include_fields is not None:
+            wanted = [f.strip() for f in include_fields.split(",") if f.strip()]
+            comments = [{k: c[k] for k in wanted if k in c} for c in comments]
+
+        mcp_log.info(f"[LLM-RES] Returning {len(comments)} comments")
+        return comments
 
     except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to fetch bug comments\nReason: {e}")
@@ -412,6 +621,8 @@ async def update_bug_fields(
     severity: str | None = None,
     resolution: str | None = None,
     custom_fields: dict[str, Any] | None = None,
+    reset_qa_contact: bool = False,
+    reset_assigned_to: bool = False,
     comment: str = "",
     bz: Bugzilla = _get_bz,
 ) -> dict[str, Any]:
@@ -423,10 +634,13 @@ async def update_bug_fields(
         severity: Severity (e.g., urgent, high, medium, low, unspecified)
         resolution: Resolution (e.g., FIXED, WONTFIX, NOTABUG, DUPLICATE) - only for closed bugs
         custom_fields: Dict of custom fields e.g. {"cf_fixed_in": "1.2.3"}
+        reset_qa_contact: Reset the QA contact to the component's default
+        reset_assigned_to: Reset the assignee to the component's default
         comment: Optional comment explaining the changes
     """
     mcp_log.info(
-        f"[LLM-REQ] update_bug_fields(bug_id={bug_id}, priority={priority}, severity={severity}, resolution={resolution})"
+        f"[LLM-REQ] update_bug_fields(bug_id={bug_id}, priority={priority}, severity={severity}, "
+        f"resolution={resolution}, reset_qa_contact={reset_qa_contact}, reset_assigned_to={reset_assigned_to})"
     )
 
     updates = {}
@@ -438,6 +652,10 @@ async def update_bug_fields(
         updates["resolution"] = resolution
     if custom_fields:
         updates.update(custom_fields)
+    if reset_qa_contact:
+        updates["reset_qa_contact"] = True
+    if reset_assigned_to:
+        updates["reset_assigned_to"] = True
 
     if not updates:
         raise ToolError("At least one field must be specified")
@@ -683,29 +901,57 @@ async def add_attachment(
         raise ToolError(f"Failed to add attachment\n{e}")
 
 
-@mcp.tool(
-    annotations={"readOnlyHint": True, "openWorldHint": True},
-    tags={"read"},
-)
-async def list_attachments(bug_id: int, bz: Bugzilla = _get_bz) -> list[dict[str, Any]]:
-    """List a bug's attachments (metadata only, without the file contents).
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
+async def list_attachments(
+    bug_id: int,
+    exclude_obsolete: bool = False,
+    patches_only: bool = False,
+    limit: int | None = None,
+    bz: Bugzilla = _get_bz,
+) -> list[dict[str, Any]]:
+    """List a bug's attachments (metadata only; base64 contents excluded).
 
-    Use this to discover attachment ids, then pass an id to ``download_attachment``
-    to fetch the actual file. The base64 ``data`` field is intentionally omitted
-    here to keep responses small.
+    Long-lived bugs accumulate many attachments (e.g. a patch re-attached on
+    every version bump), so these filters keep only the relevant ones:
 
-    Args:
-        bug_id: The bug whose attachments to list.
+      exclude_obsolete  Drop attachments flagged obsolete (is_obsolete). Note:
+                        some bots (e.g. release-monitoring) never set this
+                        flag, so it only helps where obsolete is actually used.
+      patches_only      Keep only attachments flagged as patches (is_patch).
+      limit             Return only the most recent N attachments
+                        (chronological order preserved).
 
-    Returns:
-        A list of attachment metadata objects (id, file_name, summary,
-        content_type, size, is_private, is_obsolete, is_patch, creation_time, ...).
+    Use an attachment's id with download_attachment to fetch the file.
     """
-    mcp_log.info(f"[LLM-REQ] list_attachments(bug_id={bug_id})")
+    mcp_log.info(
+        f"[LLM-REQ] list_attachments(bug_id={bug_id}, "
+        f"exclude_obsolete={exclude_obsolete}, patches_only={patches_only}, "
+        f"limit={limit})"
+    )
     try:
-        return await bz.list_attachments(bug_id)
+        attachments = await bz.list_attachments(bug_id)
+
+        # WHERE NOT is_obsolete
+        if exclude_obsolete:
+            attachments = [a for a in attachments if not a.get("is_obsolete")]
+
+        # WHERE is_patch
+        if patches_only:
+            attachments = [a for a in attachments if a.get("is_patch")]
+
+        # LIMIT to the most recent N (chronological order preserved)
+        if limit and limit > 0:
+            attachments = attachments[-limit:]
+
+        mcp_log.info(f"[LLM-RES] Returning {len(attachments)} attachments")
+        return attachments
     except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to list attachments\nReason: {e}")
+
+
+def _as_optional_bool(value: Any) -> bool | None:
+    """Bugzilla returns flag fields as 0/1 ints; coerce to bool, preserve None."""
+    return None if value is None else bool(value)
 
 
 class _AttachmentMeta(TypedDict):
@@ -801,8 +1047,8 @@ async def download_attachment(
             "file_name": att.get("file_name"),
             "content_type": content_type,
             "size": len(raw),
-            "is_private": att.get("is_private"),
-            "is_obsolete": att.get("is_obsolete"),
+            "is_private": _as_optional_bool(att.get("is_private")),
+            "is_obsolete": _as_optional_bool(att.get("is_obsolete")),
         }
 
         def _save() -> SavedAttachment:
@@ -877,6 +1123,96 @@ async def download_attachment(
         raise
     except Exception as e:  # noqa: BLE001
         raise ToolError(f"Failed to download attachment {attachment_id}\nReason: {e}")
+
+
+@mcp.tool(
+    annotations={"readOnlyHint": True, "openWorldHint": True},
+    tags={"read"},
+)
+async def get_bug_flags(bug_id: int, bz: Bugzilla = _get_bz) -> list[dict[str, Any]]:
+    """List the flags currently set on a bug, with their instance ids.
+
+    Returns each flag's id, name, status, setter, and requestee — the id is
+    what update_bug_flag needs to change or clear a specific flag instance
+    (e.g. to disambiguate when the same flag type is set for several requestees).
+    """
+    mcp_log.info(f"[LLM-REQ] get_bug_flags(bug_id={bug_id})")
+    try:
+        return await bz.bug_flags(bug_id)
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(f"Failed to fetch bug flags\n{e}")
+
+
+@mcp.tool(
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": True,
+    },
+    tags={"write"},
+)
+async def update_bug_flag(
+    bug_id: int,
+    status: Literal["?", "+", "-", "X"],
+    name: str | None = None,
+    requestee: str | None = None,
+    flag_id: int | None = None,
+    comment: str = "",
+    bz: Bugzilla = _get_bz,
+) -> dict[str, Any]:
+    """Set, grant, deny, or clear a flag on a bug (e.g. needinfo, blocker).
+
+    A single flag type such as ``needinfo`` may exist several times on one bug
+    (one per requestee), so Bugzilla has two modes and this tool mirrors them:
+
+    - **Set a new flag** — pass ``name`` (and ``requestee`` for requestable
+      flags like needinfo), e.g. name="needinfo", status="?",
+      requestee="user@example.com".
+    - **Change or clear an existing flag** — pass ``flag_id``, the flag
+      *instance* id (not the type id). Get it by calling ``get_bug_flags``
+      first and reading each flag's ``id``. Use status="X" to clear/remove it.
+
+    Args:
+        bug_id: Bug ID to update.
+        status: "?" request, "+" grant, "-" deny, "X" clear/remove.
+        name: Flag type name, when setting a new flag (e.g. "needinfo").
+        requestee: Email of the person the flag is requested from (needinfo etc.).
+        flag_id: Instance id of an existing flag, when changing or clearing it.
+        comment: Optional comment to add with the change.
+    """
+    mcp_log.info(
+        f"[LLM-REQ] update_bug_flag(bug_id={bug_id}, status='{status}', "
+        f"name={name}, requestee={requestee}, flag_id={flag_id})"
+    )
+
+    if flag_id is None and name is None:
+        raise ToolError(
+            "Provide 'name' to set a new flag, or 'flag_id' to change/clear an "
+            "existing one (call bug_info first to get the flag's id)."
+        )
+    if flag_id is not None and name is not None:
+        raise ToolError(
+            "Provide either 'name' (new flag) or 'flag_id' (existing flag), not both."
+        )
+    if name == "needinfo" and status == "?" and not requestee:
+        raise ToolError(
+            "Setting needinfo with status '?' requires a 'requestee' "
+            "(the email of the person the info is requested from)."
+        )
+
+    flag: dict[str, Any] = {"status": status}
+    if flag_id is not None:
+        flag["id"] = flag_id
+    else:
+        flag["name"] = name
+        if requestee:
+            flag["requestee"] = requestee
+
+    try:
+        result = await bz.update_bug(bug_id, {"flags": [flag]}, comment)
+        return result
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(f"Failed to update bug flag\n{e}")
 
 
 def disable_components_selectively():

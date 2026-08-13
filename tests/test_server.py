@@ -280,6 +280,27 @@ async def test_download_attachment_private_allowed_with_flag(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_download_attachment_int_flags_coerced_to_bool(tmp_path):
+    # Bugzilla's REST API returns is_private/is_obsolete as 0/1 ints; they must
+    # surface as real bools or FastMCP rejects the output schema.
+    server.download_dir = str(tmp_path)
+    att = {
+        "id": 50,
+        "file_name": "log.txt",
+        "content_type": "text/plain",
+        "size": 5,
+        "is_private": 0,
+        "is_obsolete": 1,
+        "data": base64.b64encode(b"hello").decode(),
+    }
+
+    result = await server.download_attachment(attachment_id=50, bz=_fake_bz(att))
+
+    assert result["is_private"] is False
+    assert result["is_obsolete"] is True
+
+
+@pytest.mark.asyncio
 @pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
 async def test_download_attachment_default_dir_is_owner_only(tmp_path):
     import stat
@@ -312,3 +333,517 @@ async def test_list_attachments_tool_passthrough():
 
     assert [a["id"] for a in result] == [1, 2]
     bz.list_attachments.assert_awaited_once_with(123)
+
+
+@pytest.mark.asyncio
+async def test_get_bug_flags_passthrough():
+    bz = AsyncMock()
+    bz.bug_flags = AsyncMock(
+        return_value=[{"id": 6228688, "name": "needinfo", "status": "?"}]
+    )
+    result = await server.get_bug_flags(bug_id=123, bz=bz)
+    bz.bug_flags.assert_awaited_once_with(123)
+    assert result[0]["id"] == 6228688
+
+
+@pytest.mark.asyncio
+async def test_update_bug_flag_set_by_name():
+    bz = AsyncMock()
+    bz.update_bug = AsyncMock(return_value={"bugs": [{"id": 123}]})
+    await server.update_bug_flag(
+        bug_id=123, status="?", name="needinfo", requestee="dev@example.com", bz=bz
+    )
+    bz.update_bug.assert_awaited_once_with(
+        123,
+        {
+            "flags": [
+                {"status": "?", "name": "needinfo", "requestee": "dev@example.com"}
+            ]
+        },
+        "",
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_bug_flag_clear_by_id():
+    bz = AsyncMock()
+    bz.update_bug = AsyncMock(return_value={"bugs": [{"id": 123}]})
+    await server.update_bug_flag(bug_id=123, status="X", flag_id=6228688, bz=bz)
+    bz.update_bug.assert_awaited_once_with(
+        123, {"flags": [{"status": "X", "id": 6228688}]}, ""
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_bug_flag_clear_by_name():
+    bz = AsyncMock()
+    bz.update_bug = AsyncMock(return_value={"bugs": [{"id": 123}]})
+    await server.update_bug_flag(
+        bug_id=123, status="X", name="needinfo", requestee="dev@example.com", bz=bz
+    )
+    bz.update_bug.assert_awaited_once_with(
+        123,
+        {
+            "flags": [
+                {"status": "X", "name": "needinfo", "requestee": "dev@example.com"}
+            ]
+        },
+        "",
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_bug_flag_requires_name_or_id():
+    bz = AsyncMock()
+    with pytest.raises(ToolError, match="Provide 'name'"):
+        await server.update_bug_flag(bug_id=123, status="?", bz=bz)
+    bz.update_bug.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_bug_flag_rejects_both_name_and_id():
+    bz = AsyncMock()
+    with pytest.raises(ToolError, match="not both"):
+        await server.update_bug_flag(
+            bug_id=123, status="X", name="needinfo", flag_id=42, bz=bz
+        )
+    bz.update_bug.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_bug_flag_needinfo_requires_requestee():
+    bz = AsyncMock()
+    with pytest.raises(ToolError, match="requires a 'requestee'"):
+        await server.update_bug_flag(bug_id=123, status="?", name="needinfo", bz=bz)
+    bz.update_bug.assert_not_awaited()
+
+
+_RAW = [
+    {
+        "count": 0,
+        "id": 1,
+        "creator": "bot@monitoring",
+        "creator_id": 9,
+        "text": "v1",
+        "creation_time": "2025-01-01T00:00:00Z",
+        "tags": [],
+        "bug_id": 42,
+        "is_private": False,
+    },
+    {
+        "count": 1,
+        "id": 2,
+        "creator": "human@example.com",
+        "creator_id": 3,
+        "text": "real",
+        "creation_time": "2025-02-01T00:00:00Z",
+        "tags": [],
+        "bug_id": 42,
+        "is_private": False,
+    },
+]
+
+
+@pytest.mark.asyncio
+async def test_bug_comments_default_projection_drops_redundant_fields():
+    bz = AsyncMock()
+    bz.bug_comments = AsyncMock(return_value=[dict(c) for c in _RAW])
+    out = await server.bug_comments(id=42, bz=bz)
+    assert set(out[0]) == {"count", "id", "creator", "creation_time", "text"}
+    assert "creator_id" not in out[0] and "bug_id" not in out[0]
+
+
+@pytest.mark.asyncio
+async def test_bug_comments_exclude_creators():
+    bz = AsyncMock()
+    bz.bug_comments = AsyncMock(return_value=[dict(c) for c in _RAW])
+    out = await server.bug_comments(id=42, exclude_creators="bot@monitoring", bz=bz)
+    assert len(out) == 1 and out[0]["creator"] == "human@example.com"
+
+
+@pytest.mark.asyncio
+async def test_bug_comments_limit_keeps_most_recent():
+    bz = AsyncMock()
+    bz.bug_comments = AsyncMock(return_value=[dict(c) for c in _RAW])
+    out = await server.bug_comments(id=42, limit=1, include_fields=None, bz=bz)
+    assert len(out) == 1 and out[0]["count"] == 1
+
+
+_HIST = [
+    {
+        "when": "2026-01-01T00:00:00Z",
+        "who": "bot@monitoring",
+        "changes": [{"field_name": "summary", "added": "v2", "removed": "v1"}],
+    },
+    {
+        "when": "2026-02-01T00:00:00Z",
+        "who": "human@example.com",
+        "changes": [
+            {"field_name": "status", "added": "CLOSED", "removed": "NEW"},
+            {"field_name": "resolution", "added": "RAWHIDE", "removed": ""},
+            {"field_name": "cf_last_closed", "added": "2026-02-01", "removed": ""},
+        ],
+    },
+    {
+        "when": "2026-03-01T00:00:00Z",
+        "who": "human@example.com",
+        "changes": [
+            {"field_name": "flagtypes.name", "added": "needinfo?", "removed": ""}
+        ],
+    },
+]
+
+
+@pytest.mark.asyncio
+async def test_bug_history_changed_fields_keeps_only_matching_changes():
+    bz = AsyncMock()
+    bz.bug_history = AsyncMock(return_value=[dict(h) for h in _HIST])
+    out = await server.bug_history(id=42, changed_fields="status,resolution", bz=bz)
+    # only the lifecycle event survives, and only its matching changes are kept
+    assert len(out) == 1
+    kept = {c["field_name"] for c in out[0]["changes"]}
+    assert kept == {"status", "resolution"}  # cf_last_closed dropped
+
+
+@pytest.mark.asyncio
+async def test_bug_history_exclude_authors():
+    bz = AsyncMock()
+    bz.bug_history = AsyncMock(return_value=[dict(h) for h in _HIST])
+    out = await server.bug_history(id=42, exclude_authors="bot@monitoring", bz=bz)
+    assert len(out) == 2
+    assert all(h["who"] == "human@example.com" for h in out)
+
+
+@pytest.mark.asyncio
+async def test_bug_history_limit_keeps_most_recent():
+    bz = AsyncMock()
+    bz.bug_history = AsyncMock(return_value=[dict(h) for h in _HIST])
+    out = await server.bug_history(id=42, limit=1, bz=bz)
+    assert len(out) == 1 and out[0]["when"] == "2026-03-01T00:00:00Z"  # newest
+
+
+@pytest.mark.asyncio
+async def test_bug_info_passes_field_selection_through():
+    bz = AsyncMock()
+    bz.bug_info = AsyncMock(return_value={"bugs": [{"id": 1}], "faults": []})
+    await server.bug_info(
+        bug_ids={1},
+        include_fields="id,status,summary",
+        exclude_fields="cc_detail",
+        bz=bz,
+    )
+    bz.bug_info.assert_awaited_once_with(
+        {1}, include_fields="id,status,summary", exclude_fields="cc_detail"
+    )
+
+
+@pytest.mark.asyncio
+async def test_bug_info_defaults_to_full_response():
+    bz = AsyncMock()
+    bz.bug_info = AsyncMock(return_value={"bugs": [{"id": 1}], "faults": []})
+    await server.bug_info(bug_ids={1}, bz=bz)
+    bz.bug_info.assert_awaited_once_with({1}, include_fields=None, exclude_fields=None)
+
+
+_ATT = [
+    {
+        "id": 1,
+        "is_obsolete": 1,
+        "is_patch": 1,
+        "file_name": "old.patch",
+        "creation_time": "2025-01-01T00:00:00Z",
+    },
+    {
+        "id": 2,
+        "is_obsolete": 0,
+        "is_patch": 1,
+        "file_name": "new.patch",
+        "creation_time": "2025-02-01T00:00:00Z",
+    },
+    {
+        "id": 3,
+        "is_obsolete": 0,
+        "is_patch": 0,
+        "file_name": "build.log",
+        "creation_time": "2025-03-01T00:00:00Z",
+    },
+]
+
+
+@pytest.mark.asyncio
+async def test_list_attachments_default_returns_all():
+    bz = AsyncMock()
+    bz.list_attachments = AsyncMock(return_value=[dict(a) for a in _ATT])
+    out = await server.list_attachments(bug_id=42, bz=bz)
+    assert [a["id"] for a in out] == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_list_attachments_exclude_obsolete():
+    bz = AsyncMock()
+    bz.list_attachments = AsyncMock(return_value=[dict(a) for a in _ATT])
+    out = await server.list_attachments(bug_id=42, exclude_obsolete=True, bz=bz)
+    assert [a["id"] for a in out] == [2, 3]  # obsolete id 1 dropped
+
+
+@pytest.mark.asyncio
+async def test_list_attachments_patches_only():
+    bz = AsyncMock()
+    bz.list_attachments = AsyncMock(return_value=[dict(a) for a in _ATT])
+    out = await server.list_attachments(bug_id=42, patches_only=True, bz=bz)
+    assert [a["id"] for a in out] == [1, 2]  # non-patch log id 3 dropped
+
+
+@pytest.mark.asyncio
+async def test_list_attachments_limit_keeps_most_recent():
+    bz = AsyncMock()
+    bz.list_attachments = AsyncMock(return_value=[dict(a) for a in _ATT])
+    out = await server.list_attachments(bug_id=42, limit=1, bz=bz)
+    assert [a["id"] for a in out] == [3]  # newest kept, chronological order
+
+
+@pytest.mark.asyncio
+async def test_list_attachments_filters_compose():
+    bz = AsyncMock()
+    bz.list_attachments = AsyncMock(return_value=[dict(a) for a in _ATT])
+    out = await server.list_attachments(
+        bug_id=42, exclude_obsolete=True, patches_only=True, bz=bz
+    )
+    assert [a["id"] for a in out] == [2]  # only the non-obsolete patch
+
+
+def _update_bz():
+    """A stand-in Bugzilla client exposing only update_bug."""
+    bz = AsyncMock()
+    bz.update_bug = AsyncMock(return_value={"bugs": [{"id": 123}]})
+    return bz
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_no_reset_keys_by_default():
+    """A normal update must not ship reset_* keys when the flags are False."""
+    bz = _update_bz()
+
+    await server.update_bug_fields(bug_id=123, priority="high", bz=bz)
+
+    bz.update_bug.assert_awaited_once_with(123, {"priority": "high"}, "")
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_reset_qa_contact():
+    bz = _update_bz()
+
+    await server.update_bug_fields(bug_id=123, reset_qa_contact=True, bz=bz)
+
+    bz.update_bug.assert_awaited_once_with(123, {"reset_qa_contact": True}, "")
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_reset_assigned_to():
+    bz = _update_bz()
+
+    await server.update_bug_fields(bug_id=123, reset_assigned_to=True, bz=bz)
+
+    bz.update_bug.assert_awaited_once_with(123, {"reset_assigned_to": True}, "")
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_reset_both_with_other_fields():
+    bz = _update_bz()
+
+    await server.update_bug_fields(
+        bug_id=123,
+        priority="high",
+        reset_qa_contact=True,
+        reset_assigned_to=True,
+        comment="reset to defaults",
+        bz=bz,
+    )
+
+    bz.update_bug.assert_awaited_once_with(
+        123,
+        {
+            "priority": "high",
+            "reset_qa_contact": True,
+            "reset_assigned_to": True,
+        },
+        "reset to defaults",
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_bare_reset_is_valid():
+    """A reset-only call must satisfy the 'at least one field' guard."""
+    bz = _update_bz()
+
+    await server.update_bug_fields(bug_id=123, reset_qa_contact=True, bz=bz)
+
+    bz.update_bug.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_update_bug_fields_no_fields_raises():
+    bz = _update_bz()
+
+    with pytest.raises(ToolError, match="At least one field"):
+        await server.update_bug_fields(bug_id=123, bz=bz)
+
+    bz.update_bug.assert_not_awaited()
+
+
+def _product_envelope():
+    # Bugzilla's key is default_assigned_to, not default_assignee.
+    return {
+        "products": [
+            {
+                "id": 15,
+                "name": "ProdX",
+                "components": [
+                    {
+                        "name": "Release Notes",
+                        "default_assigned_to": "dev@example.com",
+                        "default_qa_contact": "qa@example.com",
+                        "is_active": True,
+                    }
+                ],
+            }
+        ]
+    }
+
+
+def _product_bz(envelope=None):
+    bz = AsyncMock()
+    bz.get_product = AsyncMock(
+        return_value=envelope if envelope is not None else _product_envelope()
+    )
+    return bz
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_explicit_product():
+    bz = _product_bz()
+
+    result = await server.get_component_defaults(
+        component="Release Notes", product="ProdX", bz=bz
+    )
+
+    assert result["default_qa_contact"] == "qa@example.com"
+    assert result["default_assignee"] == "dev@example.com"
+    assert result["is_active"] is True
+    bz.get_product.assert_awaited_once()
+    assert bz.get_product.await_args.args[0] == "ProdX"
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_resolves_from_bug_id():
+    bz = _product_bz()
+    bz.bug_info = AsyncMock(
+        return_value={"bugs": [{"product": "ProdX", "component": "Release Notes"}]}
+    )
+
+    result = await server.get_component_defaults(bug_id=42, bz=bz)
+
+    assert result["product"] == "ProdX"
+    assert result["component"] == "Release Notes"
+    assert result["default_assignee"] == "dev@example.com"
+    assert result["default_qa_contact"] == "qa@example.com"
+    bz.bug_info.assert_awaited_once_with({42}, include_fields="product,component")
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_explicit_product_wins_over_bug_id():
+    """An explicit product/component must skip the bug lookup entirely."""
+    bz = _product_bz()
+    bz.bug_info = AsyncMock()
+
+    result = await server.get_component_defaults(
+        component="Release Notes", product="ProdX", bug_id=42, bz=bz
+    )
+
+    assert result["default_assignee"] == "dev@example.com"
+    bz.bug_info.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_absent_defaults_are_none():
+    """A component missing the default keys yields None, not KeyError."""
+    bz = _product_bz({"products": [{"components": [{"name": "Release Notes"}]}]})
+
+    result = await server.get_component_defaults(
+        component="Release Notes", product="ProdX", bz=bz
+    )
+
+    assert result["default_assignee"] is None
+    assert result["default_qa_contact"] is None
+    assert result["is_active"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_empty_string_defaults_are_none():
+    """Bugzilla reports an unset contact as "", which must surface as None."""
+    bz = _product_bz(
+        {
+            "products": [
+                {
+                    "components": [
+                        {
+                            "name": "Release Notes",
+                            "default_assigned_to": "dev@example.com",
+                            "default_qa_contact": "",
+                            "is_active": False,
+                        }
+                    ]
+                }
+            ]
+        }
+    )
+
+    result = await server.get_component_defaults(
+        component="Release Notes", product="ProdX", bz=bz
+    )
+
+    assert result["default_qa_contact"] is None
+    assert result["default_assignee"] == "dev@example.com"
+    # False is a real value, not a missing one.
+    assert result["is_active"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_bug_not_found():
+    bz = _product_bz()
+    bz.bug_info = AsyncMock(return_value={"bugs": []})
+
+    with pytest.raises(ToolError, match="Bug 42 not found"):
+        await server.get_component_defaults(bug_id=42, bz=bz)
+
+    bz.get_product.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_product_not_found():
+    bz = _product_bz({"products": []})
+
+    with pytest.raises(ToolError, match="Product 'Nope' not found"):
+        await server.get_component_defaults(
+            component="Release Notes", product="Nope", bz=bz
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_component_not_found():
+    bz = _product_bz()
+
+    with pytest.raises(ToolError, match="not found in product"):
+        await server.get_component_defaults(
+            component="Nonexistent", product="ProdX", bz=bz
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_component_defaults_requires_product_or_bug_id():
+    bz = _product_bz()
+
+    with pytest.raises(ToolError, match="product.*or.*bug_id"):
+        await server.get_component_defaults(component="Release Notes", bz=bz)
+
+    bz.get_product.assert_not_awaited()

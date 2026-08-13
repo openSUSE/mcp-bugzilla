@@ -25,27 +25,45 @@ The server provides the following tools for interacting with Bugzilla:
 
 #### Bug Information
 
-- **`bug_info(bug_ids: set[int])`**: Retrieves comprehensive details for specified Bugzilla bug IDs.
+- **`bug_info(bug_ids: set[int], include_fields: Optional[str] = None, exclude_fields: Optional[str] = None)`**: Retrieves comprehensive details for specified Bugzilla bug IDs. By default every field is returned; use Bugzilla's native field selection to trim large or bulk fetches.
   - **Parameters**:
     - `bug_ids`: A set of bug IDs to fetch details for
-  - **Returns**: A dictionary containing the array `bugs` which lists all available information about the bugs (status, assignee, summary, description, extensions, etc.)
-  - **Example**: `bug_info({12345, 67890})` returns complete bug details for the specified IDs.
+    - `include_fields`: Comma-separated field names to return (Bugzilla's native `Bug.get` parameter; supports field groups and `_default`/`_all`/`_extra`). For the leanest response request only scalar fields, e.g. `"id,status,resolution,summary"`. Requesting a user field (`assigned_to`, `creator`, `cc`, `qa_contact`) also returns its verbose `*_detail` object. Defaults to all fields
+    - `exclude_fields`: Comma-separated field names to drop. To remove a user-object expansion, exclude both the base field and its `*_detail` together, e.g. `"cc,cc_detail"` — excluding the `*_detail` alone has no effect, as Bugzilla re-attaches it while the base field is present
+  - **Returns**: A dictionary containing the array `bugs` which lists the requested information about the bugs (status, assignee, summary, description, extensions, etc.)
+  - **Note on Bugzilla API parity**: both `include_fields` and `exclude_fields` are native Bugzilla `Bug.get` parameters, forwarded to the API unchanged; the underlying request is standard Bugzilla
+  - **Example**: `bug_info({12345, 67890}, include_fields="id,status,resolution,summary")` fetches two bugs with just the essential scalar fields
 
-- **`bug_history(id: int, new_since: Optional[datetime] = None)`**: Fetches the history of changes for a given bug ID.
+- **`bug_history(id: int, new_since: Optional[datetime] = None, changed_fields: Optional[str] = None, exclude_authors: Optional[str] = None, limit: Optional[int] = None)`**: Fetches the change history of a given bug ID, with SQL-like controls to keep only the change events that matter for triage.
   - **Parameters**:
     - `id`: The bug ID to fetch history for
-    - `new_since`: Optional datetime object to only return history entries newer than this time.
-  - **Returns**: A list of history event dictionaries, each containing timestamp, author, and an array of changes.
-  - **Example**: `bug_history(12345, new_since=datetime.fromisoformat("2026-01-01T00:00:00"))` returns all history changes newer than Jan 1, 2026.
+    - `new_since`: Optional datetime object to only return history newer than this time
+    - `changed_fields`: Comma-separated Bugzilla field names; keep only changes to these fields, dropping events left with no matching change (e.g. `"status,resolution,assigned_to"` to see only lifecycle changes and hide the cc / flagtypes.name / summary churn that dominates most histories)
+    - `exclude_authors`: Comma-separated substrings; drop events whose author matches any (e.g. `"upstream-release-monitoring"` to hide release-monitoring bot edits)
+    - `limit`: Return only the most recent N events (chronological order preserved)
+  - **Returns**: A list of history-event dictionaries, each containing `when`, `who`, and a `changes` list (each change has `field_name`, `added`, and `removed`)
+  - **Note on Bugzilla API parity**: `new_since` mirrors Bugzilla's own API parameter. `changed_fields`, `exclude_authors`, and `limit` have no server-side Bugzilla equivalent — this server applies them client-side, as post-processing over the standard `Bug.history` response; the underlying Bugzilla request is unmodified
+  - **Example**: `bug_history(2504555, changed_fields="status,resolution")` returns just the event where the bug was closed as RAWHIDE, filtering out the surrounding cc and needinfo-flag churn
 
-- **`bug_comments(id: int, include_private_comments: bool = False, new_since: Optional[datetime] = None)`**: Fetches all comments associated with a given bug ID.
+- **`bug_comments(id: int, include_private_comments: bool = False, new_since: Optional[datetime] = None, include_fields: Optional[str] = "count,id,creator,creation_time,text,attachment_id", exclude_creators: Optional[str] = None, limit: Optional[int] = None)`**: Fetches comments associated with a given bug ID, with SQL-like controls to keep only what is needed and avoid flooding the context on large threads.
   - **Parameters**:
     - `id`: The bug ID to fetch comments for
     - `include_private_comments`: Whether to include private comments (default: `False`)
-    - `new_since`: Optional datetime object to only return comments newer than this time.
-  - **Returns**: A list of comment dictionaries, each containing author, timestamp, text, and privacy status
-  - **Example**: `bug_comments(12345, include_private_comments=True, new_since=datetime.fromisoformat("2026-01-01T00:00:00"))` returns all comments newer than Jan 1, 2026 including private ones
+    - `new_since`: Optional datetime object to only return comments newer than this time
+    - `include_fields`: Comma-separated field names to keep per comment (default: `count,id,creator,creation_time,text,attachment_id`). Pass `None` to return every field
+    - `exclude_creators`: Comma-separated substrings; drop comments whose creator matches any (e.g. `"upstream-release-monitoring"` to hide release-monitoring/bot noise)
+    - `limit`: Return only the most recent N comments (chronological order preserved)
+  - **Returns**: A list of comment dictionaries. By default each contains `count`, `id`, `creator`, `creation_time`, `text`, and `attachment_id`; pass `include_fields=None` for the full objects (which also include `creator_id`, `bug_id`, `tags`, `time`, and `is_private`)
+  - **Note on Bugzilla API parity**: `new_since` and `include_fields` mirror Bugzilla's own API parameters of the same names (`include_fields` is applied client-side here). `exclude_creators` and `limit` have no server-side Bugzilla equivalent — this server applies them client-side, as post-processing over the standard `Bug.comments` response; the underlying Bugzilla request is unmodified.
+  - **Example**: `bug_comments(12345, exclude_creators="upstream-release-monitoring", limit=5)` returns the 5 most recent comments that aren't from the release-monitoring bot
 
+- **`get_component_defaults(component: str = None, product: str = None, bug_id: int = None)`**: Looks up a component's default assignee and QA contact, read from the parent product since Bugzilla has no component endpoint.
+  - **Parameters**:
+    - `component`: Component name (resolved from `bug_id` if omitted)
+    - `product`: Product the component belongs to (resolved from `bug_id` if omitted)
+    - `bug_id`: Resolve product/component from this bug instead of passing them
+  - **Returns**: A dictionary with `product`, `component`, `default_assignee`, `default_qa_contact`, `is_active`
+  - **Example**: `get_component_defaults(bug_id=12345)` returns the defaults for that bug's component. To reset a bug *to* these defaults, use `update_bug_fields(..., reset_qa_contact=True)`.
 
 
 - **`add_comment(bug_id: int, comment: str, is_private: bool = False)`**: Adds a new comment to a specified bug.
@@ -58,11 +76,15 @@ The server provides the following tools for interacting with Bugzilla:
 
 #### Attachments
 
-- **`list_attachments(bug_id: int)`**: Lists a bug's attachments as metadata only (the base64 file contents are excluded to keep responses small).
+- **`list_attachments(bug_id: int, exclude_obsolete: bool = False, patches_only: bool = False, limit: Optional[int] = None)`**: Lists a bug's attachments as metadata only (the base64 file contents are excluded to keep responses small), with filters to cut the noise on bugs that accumulate many attachments.
   - **Parameters**:
     - `bug_id`: The bug whose attachments to list
+    - `exclude_obsolete`: Drop attachments flagged obsolete (`is_obsolete`). Note: some bots (e.g. release-monitoring) never set this flag, so it only helps where obsolete is actually used
+    - `patches_only`: Keep only attachments flagged as patches (`is_patch`)
+    - `limit`: Return only the most recent N attachments (chronological order preserved)
   - **Returns**: A list of attachment metadata objects (`id`, `file_name`, `summary`, `content_type`, `size`, `is_private`, `is_obsolete`, `is_patch`, `creation_time`, ...). Use an `id` with `download_attachment` to fetch the file.
-  - **Example**: `list_attachments(989633)`
+  - **Note on Bugzilla API parity**: `exclude_obsolete`, `patches_only`, and `limit` have no server-side Bugzilla equivalent — this server applies them client-side, as post-processing over the standard attachment metadata; the underlying Bugzilla request is unmodified
+  - **Example**: `list_attachments(2381747, patches_only=True, limit=3)` returns the 3 most recent patch attachments
 
 - **`download_attachment(attachment_id: int, output_dir: Optional[str] = None, delivery: "auto" | "inline" | "save" = "auto", include_private: bool = False)`**: Downloads a single attachment by id. The `delivery` argument lets the caller choose how the content is returned.
   - **Parameters**:
@@ -99,16 +121,20 @@ The server provides the following tools for interacting with Bugzilla:
   + **Returns**: A dictionary containing the updated bug fields
   + **Example**: `assign_bug(12345, "developer@example.com", comment="You're the expert on this component")`
 
-* **`update_bug_fields(bug_id: int, priority: str = None, severity: str = None, resolution: str = None, comment: str = "")`**: Updates various bug fields.
+* **`update_bug_fields(bug_id: int, priority: str = None, severity: str = None, resolution: str = None, custom_fields: dict = None, reset_qa_contact: bool = False, reset_assigned_to: bool = False, comment: str = "")`**: Updates various bug fields.
 
   + **Parameters**:
     - `bug_id`: The bug ID to update
     - `priority`: Priority level (e.g., `urgent`, `high`, `medium`, `low`, `unspecified`)
     - `severity`: Severity level (e.g., `urgent`, `high`, `medium`, `low`, `unspecified`)
     - `resolution`: Resolution (only for closed bugs)
+    - `custom_fields`: Dict of custom fields, e.g. `{"cf_fixed_in": "1.2.3"}`
+    - `reset_qa_contact`: If `True`, reset the QA contact to the component's default
+    - `reset_assigned_to`: If `True`, reset the assignee to the component's default
     - `comment`: Optional comment explaining the changes
   + **Returns**: A dictionary containing the updated bug fields
   + **Example**: `update_bug_fields(12345, priority="high", severity="urgent", comment="Escalating due to customer impact")`
+  + **Example**: `update_bug_fields(12345, reset_qa_contact=True)` resets the QA contact to the component default
 
 * **`add_cc_to_bug(bug_id: int, cc_email: str)`**: Adds an email address to the CC list of a bug.
 
