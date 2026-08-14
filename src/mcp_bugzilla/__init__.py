@@ -85,7 +85,7 @@ def main():
         "--tool-search",
         action="store_true",
         default=os.getenv("MCP_TOOL_SEARCH", "false").lower() == "true",
-        help="Collapse all tools into discovery + execute meta-tools (search, get_schemas, execute). Environment variable MCP_TOOL_SEARCH=true can also be used.",
+        help="Collapse all tools into search_tools + call_tool meta-tools using BM25 relevance ranking. Environment variable MCP_TOOL_SEARCH=true can also be used.",
     )
 
     parser.add_argument(

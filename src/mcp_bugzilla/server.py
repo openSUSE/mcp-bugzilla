@@ -1263,21 +1263,14 @@ def start():
     # Ensure base_url doesn't have trailing slash for consistency
     base_url = base_url.removesuffix("/")
 
-    # Optionally enable tool-search transform
+    # Optionally enable BM25 search transform
     if getattr(cli_args, "tool_search", False):
-        try:
-            from fastmcp.experimental.transforms.code_mode import CodeMode
+        from fastmcp.server.transforms.search import BM25SearchTransform
 
-            mcp.add_transform(CodeMode())
-            mcp_log.info(
-                "Tool search transform enabled — tools collapsed into search, get_schemas, and execute"
-            )
-        except ImportError:
-            mcp_log.warning(
-                "--tool-search flag was passed but the required dependency "
-                "is not installed (install with 'pip install fastmcp[code-mode]'). "
-                "Tool search will not be enabled."
-            )
+        mcp.add_transform(BM25SearchTransform())
+        mcp_log.info(
+            "BM25 search transform enabled — tools collapsed into search_tools and call_tool"
+        )
 
     # Seletively disable components before running the server
     disable_components_selectively()
