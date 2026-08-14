@@ -18,9 +18,9 @@ from typing import Any, Literal, TypedDict
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
 from fastmcp.exceptions import PromptError, ResourceError, ToolError
+from .mcp_utils import is_textual, mcp_log, safe_filename
 
 from .lib_bugzilla import Bugzilla
-from .mcp_utils import is_textual, mcp_log, safe_filename
 
 # The FastMCP instance
 mcp = FastMCP("Bugzilla")
@@ -1262,6 +1262,15 @@ def start():
     )
     # Ensure base_url doesn't have trailing slash for consistency
     base_url = base_url.removesuffix("/")
+
+    # Optionally enable BM25 search transform
+    if getattr(cli_args, "tool_search", False):
+        from fastmcp.server.transforms.search import BM25SearchTransform
+
+        mcp.add_transform(BM25SearchTransform())
+        mcp_log.info(
+            "BM25 search transform enabled — tools collapsed into search_tools and call_tool"
+        )
 
     # Seletively disable components before running the server
     disable_components_selectively()

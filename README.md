@@ -329,6 +329,7 @@ The `mcp-bugzilla` command supports the following options:
 | `--bugzilla-api-key <KEY>` | `BUGZILLA_API_KEY` | *none* | Static Bugzilla API key. Optional: if omitted and not provided per-request via `--mcp-auth-header` (http), access is **anonymous**. For `--transport stdio` this is the only source of the key |
 | `--bugzilla-auth-mode {query,bearer}` | `BUGZILLA_AUTH_MODE` | `query` | How to authenticate with Bugzilla: `query` sends `?api_key=<KEY>` (default, works with most instances); `bearer` sends `Authorization: Bearer <KEY>` header (required for Red Hat Bugzilla and similar) |
 | `--read-only` | `MCP_READ_ONLY` | `False` | Disables all tools which can modify a bug. Works well in conjunction with `MCP_BUGZILLA_DISABLED_METHODS` |
+| `--tool-search` | `MCP_TOOL_SEARCH` | `False` | Collapse all tools into `search_tools` + `call_tool` meta-tools using BM25 relevance ranking. The LLM searches for tools by natural language query and calls them directly. Reduces context overhead when many tools are available |
 | `--download-dir <DIR>` | `BUGZILLA_DOWNLOAD_DIR` | `<tmpdir>/mcp-bugzilla` | Directory where `download_attachment` writes binary/oversized attachments. The default directory is created on first use and restricted to the owner (`0o700`); an explicit `output_dir` keeps its own permissions |
 
 **Note**: `--host` and `--port` are rejected with an error when used together with `--transport stdio`.

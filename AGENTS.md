@@ -12,6 +12,16 @@ This document describes common development tasks for the `mcp-bugzilla` project.
 - **General utilities** (logging, helpers): `src/mcp_bugzilla/mcp_utils.py`
   - `mcp_utils.py` lazily re-exports `Bugzilla` and `BugzillaAPIError` from `lib_bugzilla.py` for backward compatibility — prefer importing directly from `lib_bugzilla`
 - **Tests**: `tests/`
+
+## Setup
+
+```bash
+# sync dependencies
+uv sync
+# Running the Server
+uv run mcp-bugzilla --bugzilla-server https://bugzilla.example.com
+```
+Tests use `respx` to mock HTTP calls and `pytest-asyncio` for async test support.
   - `test_cli.py` — CLI argument parsing
   - `test_lib_bugzilla.py` — Bugzilla REST client methods (mocked HTTP with `respx`)
   - `test_server.py` — MCP tool functions (with `AsyncMock` client)
