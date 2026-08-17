@@ -6,7 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [v0.20.0] - 2026-08-17
+
 ### Added
+- Added `--tool-search` flag to enable progressive tool discovery. This reduces context overhead when many tools are available by letting the LLM discover and chain tools on demand. Can also enable via MCP_TOOL_SEARCH env var support
 - `update_bug_fields` gains `reset_qa_contact` and `reset_assigned_to` flags. These map to Bugzilla's native `Bug.update` booleans, so the default is resolved server-side rather than written back by the client.
 - New read-only `get_component_defaults` tool returns a component's default assignee and QA contact. Bugzilla has no component endpoint, so the defaults are read from the parent product (new `Bugzilla.get_product` helper). Takes an explicit `product`/`component`, or a `bug_id` to resolve them from a bug.
 
