@@ -353,7 +353,7 @@ async def bug_comments(
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": False, "destructiveHint": True, "openWorldHint": True},
+    annotations={"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True},
     tags={"write"},
 )
 async def add_comment(
@@ -381,8 +381,8 @@ async def bugs_quicksearch(
 ) -> dict[str, Any]:
     """Search bugs using Bugzilla's Quicksearch syntax.
 
-    To reduce the token limit & response time, only returns a subset of fields for each bug
-    The user can query full details of each bug using the bug_info tool
+    To reduce the token limit & response time, this only returns a subset of fields for each bug.
+    The user can query full details of each bug using the `bug_info` tool.
     Returns the top-level bug data envelope containing the matched bugs.
     """
 
@@ -434,7 +434,7 @@ async def quicksearch_syntax_resource(bz: Bugzilla = _get_bz) -> str:
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bugzilla_server_info(bz: Bugzilla = _get_bz) -> dict[str, Any]:
-    """Returns comprehensive bugzilla server information (url, version, extensions, timezone, time, parameters)."""
+    """Returns comprehensive Bugzilla server information (url, version, extensions, timezone, time, parameters)."""
     mcp_log.info("[LLM-REQ] bugzilla_server_info()")
     try:
         return await bz.bugzilla_info()
@@ -451,7 +451,7 @@ def bug_url(bug_id: int) -> str:
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def mcp_server_info_resource(bz: Bugzilla = _get_bz) -> dict[str, Any]:
-    """Returns the args being used by the current server instance"""
+    """Returns the configuration arguments and version of the current MCP server instance."""
 
     mcp_log.info("[LLM-REQ] mcp_server_info_resource()")
 
@@ -845,7 +845,7 @@ async def add_attachment(
         bug_id: Bug to attach the file to
         file_name: File name shown in Bugzilla
         summary: Short description of the attachment
-        data: The attachment content, **base64-encoded** (binary-safe)
+        data: The attachment content. MUST be base64-encoded (binary-safe)!
         content_type: MIME type (ignored by Bugzilla when is_patch=True)
         is_patch: Mark the attachment as a patch
         is_private: Restrict the attachment to the insider group
