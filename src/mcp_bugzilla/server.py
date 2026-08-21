@@ -18,9 +18,18 @@ from typing import Any, Literal, TypedDict
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
 from fastmcp.exceptions import PromptError, ResourceError, ToolError
-from .mcp_utils import is_textual, mcp_log, safe_filename
 
 from .lib_bugzilla import Bugzilla
+from .mcp_utils import (
+    filter_by_flag,
+    filter_exclude_substrings,
+    filter_history_changes,
+    filter_include_fields,
+    filter_limit,
+    is_textual,
+    mcp_log,
+    safe_filename,
+)
 
 # The FastMCP instance
 mcp = FastMCP("Bugzilla")
@@ -103,12 +112,12 @@ _get_bz = Depends(get_bz)
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bug_info(
-    bug_ids: set[int],
+    bug_ids: list[int],
     include_fields: str | None = None,
     exclude_fields: str | None = None,
     bz: Bugzilla = _get_bz,
 ) -> dict[str, Any]:
-    """Returns information for one or more bugzilla bug ids.
+    """Returns information for one or more Bugzilla bug IDs.
 
     By default every field is returned. For large or bulk fetches, use
     Bugzilla's native field selection (both are forwarded to Bug.get):
@@ -247,14 +256,14 @@ async def get_component_defaults(
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bug_history(
-    id: int,
+    bug_id: int,
     new_since: datetime | None = None,
     changed_fields: str | None = None,
     exclude_authors: str | None = None,
     limit: int | None = None,
     bz: Bugzilla = _get_bz,
 ) -> list[dict[str, Any]]:
-    """Returns the history of given bug id.
+    """Returns the history of a given bug.
 
     A bug's history is often dominated by low-signal churn (repeated bot
     edits, cc-list changes, flag flips). These SQL-like controls keep only
@@ -273,38 +282,17 @@ async def bug_history(
     """
 
     mcp_log.info(
-        f"[LLM-REQ] bug_history(id={id}, new_since={new_since}, "
+        f"[LLM-REQ] bug_history(bug_id={bug_id}, new_since={new_since}, "
         f"changed_fields={changed_fields}, exclude_authors={exclude_authors}, "
         f"limit={limit})"
     )
 
     try:
-        history = await bz.bug_history(id, new_since=new_since)
+        history = await bz.bug_history(bug_id, new_since=new_since)
 
-        # WHERE who NOT LIKE any(exclude_authors)
-        if exclude_authors:
-            patterns = [p.strip() for p in exclude_authors.split(",") if p.strip()]
-            history = [
-                h
-                for h in history
-                if not any(p in (h.get("who") or "") for p in patterns)
-            ]
-
-        # WHERE field_name IN (changed_fields); drop events left with no match
-        if changed_fields:
-            wanted = {f.strip() for f in changed_fields.split(",") if f.strip()}
-            pruned = []
-            for h in history:
-                kept = [
-                    c for c in h.get("changes", []) if c.get("field_name") in wanted
-                ]
-                if kept:
-                    pruned.append({**h, "changes": kept})
-            history = pruned
-
-        # LIMIT to the most recent N (chronological order preserved)
-        if limit and limit > 0:
-            history = history[-limit:]
+        history = filter_exclude_substrings(history, "who", exclude_authors)
+        history = filter_history_changes(history, changed_fields)
+        history = filter_limit(history, limit)
 
         mcp_log.info(f"[LLM-RES] Returning {len(history)} history items")
         return history
@@ -314,22 +302,23 @@ async def bug_history(
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bug_comments(
-    id: int,
+    bug_id: int,
     include_private_comments: bool = False,
     new_since: datetime | None = None,
-    include_fields: str | None = "count,id,creator,creation_time,text,attachment_id",
+    include_fields: str
+    | None = "count,id,creator,creation_time,text,attachment_id,is_private",
     exclude_creators: str | None = None,
     limit: int | None = None,
     bz: Bugzilla = _get_bz,
 ) -> list[dict[str, Any]]:
-    """Returns the comments of given bug id.
+    """Returns the comments of a given bug.
 
     Comment threads on long-lived bugs can be very large (hundreds of automated
     comments), so this tool exposes SQL-like controls to return only what is
     needed and avoid flooding the context window:
 
       include_fields    Comma-separated field names to keep per comment
-                        (default: count,id,creator,creation_time,text,attachment_id).
+                        (default: count,id,creator,creation_time,text,attachment_id,is_private).
                         Pass None to return every field.
       exclude_creators  Comma-separated substrings; drop comments whose creator
                         matches any -- e.g. "upstream-release-monitoring" to hide
@@ -337,40 +326,25 @@ async def bug_comments(
       limit             Return only the most recent N comments (chronological
                         order is preserved).
       new_since         Only comments newer than the given date.
-      include_private_comments  Include private comments (default: False).
+      include_private_comments  MUST be set to True to retrieve private/internal comments (default: False).
     """
 
     mcp_log.info(
-        f"[LLM-REQ] bug_comments(id={id}, "
+        f"[LLM-REQ] bug_comments(bug_id={bug_id}, "
         f"include_private_comments={include_private_comments}, new_since={new_since}, "
         f"include_fields={include_fields}, exclude_creators={exclude_creators}, "
         f"limit={limit})"
     )
 
     try:
-        comments = await bz.bug_comments(id, new_since=new_since)
+        comments = await bz.bug_comments(bug_id, new_since=new_since)
 
-        # WHERE is_private = false (unless explicitly requested)
         if not include_private_comments:
-            comments = [c for c in comments if not c.get("is_private", False)]
+            comments = filter_by_flag(comments, "is_private", False)
 
-        # WHERE creator NOT LIKE any(exclude_creators)
-        if exclude_creators:
-            patterns = [p.strip() for p in exclude_creators.split(",") if p.strip()]
-            comments = [
-                c
-                for c in comments
-                if not any(p in (c.get("creator") or "") for p in patterns)
-            ]
-
-        # LIMIT to the most recent N (chronological order preserved)
-        if limit and limit > 0:
-            comments = comments[-limit:]
-
-        # SELECT include_fields
-        if include_fields is not None:
-            wanted = [f.strip() for f in include_fields.split(",") if f.strip()]
-            comments = [{k: c[k] for k in wanted if k in c} for c in comments]
+        comments = filter_exclude_substrings(comments, "creator", exclude_creators)
+        comments = filter_limit(comments, limit)
+        comments = filter_include_fields(comments, include_fields)
 
         mcp_log.info(f"[LLM-RES] Returning {len(comments)} comments")
         return comments
@@ -380,13 +354,17 @@ async def bug_comments(
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": False, "destructiveHint": True, "openWorldHint": True},
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": True,
+    },
     tags={"write"},
 )
 async def add_comment(
     bug_id: int, comment: str, is_private: bool = False, bz: Bugzilla = _get_bz
 ) -> dict[str, int]:
-    """Add a comment to a bug. It can optionally be private. If success, returns the created comment id."""
+    """Add a comment to a bug. It can optionally be private. Returns the created comment id on success."""
     mcp_log.info(
         f"[LLM-REQ] add_comment(bug_id={bug_id}, comment='{comment}', is_private={is_private})"
     )
@@ -406,10 +384,10 @@ async def bugs_quicksearch(
     offset: int | None = 0,
     bz: Bugzilla = _get_bz,
 ) -> dict[str, Any]:
-    """Search bugs using bugzilla's quicksearch syntax
+    """Search bugs using Bugzilla's Quicksearch syntax.
 
-    To reduce the token limit & response time, only returns a subset of fields for each bug
-    The user can query full details of each bug using the bug_info tool
+    To reduce the token limit & response time, this only returns a subset of fields for each bug.
+    The user can query full details of each bug using the `bug_info` tool.
     Returns the top-level bug data envelope containing the matched bugs.
     """
 
@@ -436,7 +414,7 @@ async def bugs_quicksearch(
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def quicksearch_syntax_resource(bz: Bugzilla = _get_bz) -> str:
-    """Access the documentation of the bugzilla quicksearch syntax. LLM can learn using this tool. Response is in HTML"""
+    """Access the documentation of the Bugzilla Quicksearch syntax. Use this to learn how to construct advanced search queries. Response is in HTML."""
 
     mcp_log.info("[LLM-REQ] quicksearch_syntax_resource()")
 
@@ -461,7 +439,7 @@ async def quicksearch_syntax_resource(bz: Bugzilla = _get_bz) -> str:
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bugzilla_server_info(bz: Bugzilla = _get_bz) -> dict[str, Any]:
-    """Returns comprehensive bugzilla server information (url, version, extensions, timezone, time, parameters)."""
+    """Returns comprehensive Bugzilla server information (url, version, extensions, timezone, time, parameters)."""
     mcp_log.info("[LLM-REQ] bugzilla_server_info()")
     try:
         return await bz.bugzilla_info()
@@ -471,14 +449,14 @@ async def bugzilla_server_info(bz: Bugzilla = _get_bz) -> dict[str, Any]:
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False}, tags={"read"})
 def bug_url(bug_id: int) -> str:
-    """returns the bug url"""
+    """Returns the web URL for a given bug."""
     mcp_log.info(f"[LLM-REQ] bug_url(bug_id={bug_id})")
     return f"{base_url}/show_bug.cgi?id={bug_id}"
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def mcp_server_info_resource(bz: Bugzilla = _get_bz) -> dict[str, Any]:
-    """Returns the args being used by the current server instance"""
+    """Returns the configuration arguments and version of the current MCP server instance."""
 
     mcp_log.info("[LLM-REQ] mcp_server_info_resource()")
 
@@ -503,13 +481,13 @@ def get_current_headers_resource(headers: dict = _current_headers) -> dict[str, 
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
-async def summarize_bug_prompt(id: int, bz: Bugzilla = _get_bz) -> str:
-    """Summarizes all the comments of a bug"""
+async def summarize_bug_prompt(bug_id: int, bz: Bugzilla = _get_bz) -> str:
+    """Returns a prompt containing all comments of a bug, which can be used to generate a summary."""
 
-    mcp_log.info(f"[LLM-REQ] summarize_bug_prompt(id={id})")
+    mcp_log.info(f"[LLM-REQ] summarize_bug_prompt(bug_id={bug_id})")
 
     try:
-        comments = await bz.bug_comments(id)
+        comments = await bz.bug_comments(bug_id)
 
         summary_prompt = f"""
     You are an expert in summarizing bugzilla comments.
@@ -872,7 +850,7 @@ async def add_attachment(
         bug_id: Bug to attach the file to
         file_name: File name shown in Bugzilla
         summary: Short description of the attachment
-        data: The attachment content, **base64-encoded** (binary-safe)
+        data: The attachment content. MUST be base64-encoded (binary-safe)!
         content_type: MIME type (ignored by Bugzilla when is_patch=True)
         is_patch: Mark the attachment as a patch
         is_private: Restrict the attachment to the insider group
@@ -931,17 +909,13 @@ async def list_attachments(
     try:
         attachments = await bz.list_attachments(bug_id)
 
-        # WHERE NOT is_obsolete
         if exclude_obsolete:
-            attachments = [a for a in attachments if not a.get("is_obsolete")]
+            attachments = filter_by_flag(attachments, "is_obsolete", False)
 
-        # WHERE is_patch
         if patches_only:
-            attachments = [a for a in attachments if a.get("is_patch")]
+            attachments = filter_by_flag(attachments, "is_patch", True)
 
-        # LIMIT to the most recent N (chronological order preserved)
-        if limit and limit > 0:
-            attachments = attachments[-limit:]
+        attachments = filter_limit(attachments, limit)
 
         mcp_log.info(f"[LLM-RES] Returning {len(attachments)} attachments")
         return attachments

@@ -25,18 +25,18 @@ The server provides the following tools for interacting with Bugzilla:
 
 #### Bug Information
 
-- **`bug_info(bug_ids: set[int], include_fields: Optional[str] = None, exclude_fields: Optional[str] = None)`**: Retrieves comprehensive details for specified Bugzilla bug IDs. By default every field is returned; use Bugzilla's native field selection to trim large or bulk fetches.
+- **`bug_info(bug_ids: list[int], include_fields: Optional[str] = None, exclude_fields: Optional[str] = None)`**: Retrieves comprehensive details for specified Bugzilla bug IDs. By default every field is returned; use Bugzilla's native field selection to trim large or bulk fetches.
   - **Parameters**:
-    - `bug_ids`: A set of bug IDs to fetch details for
+    - `bug_ids`: A list of bug IDs to fetch details for
     - `include_fields`: Comma-separated field names to return (Bugzilla's native `Bug.get` parameter; supports field groups and `_default`/`_all`/`_extra`). For the leanest response request only scalar fields, e.g. `"id,status,resolution,summary"`. Requesting a user field (`assigned_to`, `creator`, `cc`, `qa_contact`) also returns its verbose `*_detail` object. Defaults to all fields
     - `exclude_fields`: Comma-separated field names to drop. To remove a user-object expansion, exclude both the base field and its `*_detail` together, e.g. `"cc,cc_detail"` — excluding the `*_detail` alone has no effect, as Bugzilla re-attaches it while the base field is present
   - **Returns**: A dictionary containing the array `bugs` which lists the requested information about the bugs (status, assignee, summary, description, extensions, etc.)
   - **Note on Bugzilla API parity**: both `include_fields` and `exclude_fields` are native Bugzilla `Bug.get` parameters, forwarded to the API unchanged; the underlying request is standard Bugzilla
-  - **Example**: `bug_info({12345, 67890}, include_fields="id,status,resolution,summary")` fetches two bugs with just the essential scalar fields
+  - **Example**: `bug_info([12345, 67890], include_fields="id,status,resolution,summary")` fetches two bugs with just the essential scalar fields
 
-- **`bug_history(id: int, new_since: Optional[datetime] = None, changed_fields: Optional[str] = None, exclude_authors: Optional[str] = None, limit: Optional[int] = None)`**: Fetches the change history of a given bug ID, with SQL-like controls to keep only the change events that matter for triage.
+- **`bug_history(bug_id: int, new_since: Optional[datetime] = None, changed_fields: Optional[str] = None, exclude_authors: Optional[str] = None, limit: Optional[int] = None)`**: Fetches the change history of a given bug ID, with SQL-like controls to keep only the change events that matter for triage.
   - **Parameters**:
-    - `id`: The bug ID to fetch history for
+    - `bug_id`: The bug ID to fetch history for
     - `new_since`: Optional datetime object to only return history newer than this time
     - `changed_fields`: Comma-separated Bugzilla field names; keep only changes to these fields, dropping events left with no matching change (e.g. `"status,resolution,assigned_to"` to see only lifecycle changes and hide the cc / flagtypes.name / summary churn that dominates most histories)
     - `exclude_authors`: Comma-separated substrings; drop events whose author matches any (e.g. `"upstream-release-monitoring"` to hide release-monitoring bot edits)
@@ -45,7 +45,7 @@ The server provides the following tools for interacting with Bugzilla:
   - **Note on Bugzilla API parity**: `new_since` mirrors Bugzilla's own API parameter. `changed_fields`, `exclude_authors`, and `limit` have no server-side Bugzilla equivalent — this server applies them client-side, as post-processing over the standard `Bug.history` response; the underlying Bugzilla request is unmodified
   - **Example**: `bug_history(2504555, changed_fields="status,resolution")` returns just the event where the bug was closed as RAWHIDE, filtering out the surrounding cc and needinfo-flag churn
 
-- **`bug_comments(id: int, include_private_comments: bool = False, new_since: Optional[datetime] = None, include_fields: Optional[str] = "count,id,creator,creation_time,text,attachment_id", exclude_creators: Optional[str] = None, limit: Optional[int] = None)`**: Fetches comments associated with a given bug ID, with SQL-like controls to keep only what is needed and avoid flooding the context on large threads.
+- **`bug_comments(bug_id: int, include_private_comments: bool = False, new_since: Optional[datetime] = None, include_fields: Optional[str] = "count,id,creator,creation_time,text,attachment_id,is_private", exclude_creators: Optional[str] = None, limit: Optional[int] = None)`**: Fetches comments associated with a given bug ID, with SQL-like controls to keep only what is needed and avoid flooding the context on large threads.
   - **Parameters**:
     - `id`: The bug ID to fetch comments for
     - `include_private_comments`: Whether to include private comments (default: `False`)
@@ -192,7 +192,7 @@ The server provides the following tools for interacting with Bugzilla:
 - **`quicksearch_syntax_resource()`**: Returns documentation on Bugzilla's quicksearch syntax.
   - **Returns**: A string containing HTML documentation.
 
-- **`summarize_bug_prompt(id: int)`**: Returns a detailed summary prompt for all comments of a given bug ID.
+- **`summarize_bug_prompt(bug_id: int)`**: Returns a detailed summary prompt for all comments of a given bug ID.
   - **Returns**: A well-structured summary of the bug's comments including usernames (bold italic) and dates (bold).
 
 #### Utility Tools
@@ -558,17 +558,17 @@ result = client.call_tool(
 # Get the history of changes for a bug
 history = client.call_tool(
     "bug_history",
-    {"id": 12345, "new_since": datetime.fromisoformat("2026-01-01T00:00:00")},
+    {"bug_id": 12345, "new_since": datetime.fromisoformat("2026-01-01T00:00:00")},
 )
 
 # Get all public comments
 public_comments = client.call_tool(
-    "bug_comments", {"id": 12345, "include_private_comments": False}
+    "bug_comments", {"bug_id": 12345, "include_private_comments": False}
 )
 
 # Get all comments including private ones
 all_comments = client.call_tool(
-    "bug_comments", {"id": 12345, "include_private_comments": True}
+    "bug_comments", {"bug_id": 12345, "include_private_comments": True}
 )
 ```
 
