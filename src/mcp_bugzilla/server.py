@@ -305,7 +305,7 @@ async def bug_comments(
     bug_id: int,
     include_private_comments: bool = False,
     new_since: datetime | None = None,
-    include_fields: str | None = "count,id,creator,creation_time,text,attachment_id",
+    include_fields: str | None = "count,id,creator,creation_time,text,attachment_id,is_private",
     exclude_creators: str | None = None,
     limit: int | None = None,
     bz: Bugzilla = _get_bz,
@@ -317,7 +317,7 @@ async def bug_comments(
     needed and avoid flooding the context window:
 
       include_fields    Comma-separated field names to keep per comment
-                        (default: count,id,creator,creation_time,text,attachment_id).
+                        (default: count,id,creator,creation_time,text,attachment_id,is_private).
                         Pass None to return every field.
       exclude_creators  Comma-separated substrings; drop comments whose creator
                         matches any -- e.g. "upstream-release-monitoring" to hide
@@ -325,7 +325,7 @@ async def bug_comments(
       limit             Return only the most recent N comments (chronological
                         order is preserved).
       new_since         Only comments newer than the given date.
-      include_private_comments  Include private comments (default: False).
+      include_private_comments  MUST be set to True to retrieve private/internal comments (default: False).
     """
 
     mcp_log.info(
