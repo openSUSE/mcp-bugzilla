@@ -103,12 +103,12 @@ _get_bz = Depends(get_bz)
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bug_info(
-    bug_ids: set[int],
+    bug_ids: list[int],
     include_fields: str | None = None,
     exclude_fields: str | None = None,
     bz: Bugzilla = _get_bz,
 ) -> dict[str, Any]:
-    """Returns information for one or more bugzilla bug ids.
+    """Returns information for one or more Bugzilla bug IDs.
 
     By default every field is returned. For large or bulk fetches, use
     Bugzilla's native field selection (both are forwarded to Bug.get):
@@ -247,14 +247,14 @@ async def get_component_defaults(
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bug_history(
-    id: int,
+    bug_id: int,
     new_since: datetime | None = None,
     changed_fields: str | None = None,
     exclude_authors: str | None = None,
     limit: int | None = None,
     bz: Bugzilla = _get_bz,
 ) -> list[dict[str, Any]]:
-    """Returns the history of given bug id.
+    """Returns the history of a given bug.
 
     A bug's history is often dominated by low-signal churn (repeated bot
     edits, cc-list changes, flag flips). These SQL-like controls keep only
@@ -273,13 +273,13 @@ async def bug_history(
     """
 
     mcp_log.info(
-        f"[LLM-REQ] bug_history(id={id}, new_since={new_since}, "
+        f"[LLM-REQ] bug_history(bug_id={bug_id}, new_since={new_since}, "
         f"changed_fields={changed_fields}, exclude_authors={exclude_authors}, "
         f"limit={limit})"
     )
 
     try:
-        history = await bz.bug_history(id, new_since=new_since)
+        history = await bz.bug_history(bug_id, new_since=new_since)
 
         # WHERE who NOT LIKE any(exclude_authors)
         if exclude_authors:
@@ -314,7 +314,7 @@ async def bug_history(
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def bug_comments(
-    id: int,
+    bug_id: int,
     include_private_comments: bool = False,
     new_since: datetime | None = None,
     include_fields: str | None = "count,id,creator,creation_time,text,attachment_id",
@@ -322,7 +322,7 @@ async def bug_comments(
     limit: int | None = None,
     bz: Bugzilla = _get_bz,
 ) -> list[dict[str, Any]]:
-    """Returns the comments of given bug id.
+    """Returns the comments of a given bug.
 
     Comment threads on long-lived bugs can be very large (hundreds of automated
     comments), so this tool exposes SQL-like controls to return only what is
@@ -341,14 +341,14 @@ async def bug_comments(
     """
 
     mcp_log.info(
-        f"[LLM-REQ] bug_comments(id={id}, "
+        f"[LLM-REQ] bug_comments(bug_id={bug_id}, "
         f"include_private_comments={include_private_comments}, new_since={new_since}, "
         f"include_fields={include_fields}, exclude_creators={exclude_creators}, "
         f"limit={limit})"
     )
 
     try:
-        comments = await bz.bug_comments(id, new_since=new_since)
+        comments = await bz.bug_comments(bug_id, new_since=new_since)
 
         # WHERE is_private = false (unless explicitly requested)
         if not include_private_comments:
@@ -386,7 +386,7 @@ async def bug_comments(
 async def add_comment(
     bug_id: int, comment: str, is_private: bool = False, bz: Bugzilla = _get_bz
 ) -> dict[str, int]:
-    """Add a comment to a bug. It can optionally be private. If success, returns the created comment id."""
+    """Add a comment to a bug. It can optionally be private. Returns the created comment id on success."""
     mcp_log.info(
         f"[LLM-REQ] add_comment(bug_id={bug_id}, comment='{comment}', is_private={is_private})"
     )
@@ -406,7 +406,7 @@ async def bugs_quicksearch(
     offset: int | None = 0,
     bz: Bugzilla = _get_bz,
 ) -> dict[str, Any]:
-    """Search bugs using bugzilla's quicksearch syntax
+    """Search bugs using Bugzilla's Quicksearch syntax.
 
     To reduce the token limit & response time, only returns a subset of fields for each bug
     The user can query full details of each bug using the bug_info tool
@@ -436,7 +436,7 @@ async def bugs_quicksearch(
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def quicksearch_syntax_resource(bz: Bugzilla = _get_bz) -> str:
-    """Access the documentation of the bugzilla quicksearch syntax. LLM can learn using this tool. Response is in HTML"""
+    """Access the documentation of the Bugzilla Quicksearch syntax. Use this to learn how to construct advanced search queries. Response is in HTML."""
 
     mcp_log.info("[LLM-REQ] quicksearch_syntax_resource()")
 
@@ -471,7 +471,7 @@ async def bugzilla_server_info(bz: Bugzilla = _get_bz) -> dict[str, Any]:
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False}, tags={"read"})
 def bug_url(bug_id: int) -> str:
-    """returns the bug url"""
+    """Returns the web URL for a given bug."""
     mcp_log.info(f"[LLM-REQ] bug_url(bug_id={bug_id})")
     return f"{base_url}/show_bug.cgi?id={bug_id}"
 
@@ -503,13 +503,13 @@ def get_current_headers_resource(headers: dict = _current_headers) -> dict[str, 
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
-async def summarize_bug_prompt(id: int, bz: Bugzilla = _get_bz) -> str:
-    """Summarizes all the comments of a bug"""
+async def summarize_bug_prompt(bug_id: int, bz: Bugzilla = _get_bz) -> str:
+    """Returns a prompt containing all comments of a bug, which can be used to generate a summary."""
 
-    mcp_log.info(f"[LLM-REQ] summarize_bug_prompt(id={id})")
+    mcp_log.info(f"[LLM-REQ] summarize_bug_prompt(bug_id={bug_id})")
 
     try:
-        comments = await bz.bug_comments(id)
+        comments = await bz.bug_comments(bug_id)
 
         summary_prompt = f"""
     You are an expert in summarizing bugzilla comments.
