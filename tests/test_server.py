@@ -441,6 +441,17 @@ _RAW = [
         "bug_id": 42,
         "is_private": False,
     },
+    {
+        "count": 2,
+        "id": 3,
+        "creator": "insider@example.com",
+        "creator_id": 4,
+        "text": "private internal note",
+        "creation_time": "2025-03-01T00:00:00Z",
+        "tags": [],
+        "bug_id": 42,
+        "is_private": True,
+    },
 ]
 
 
@@ -458,6 +469,27 @@ async def test_bug_comments_default_projection_drops_redundant_fields():
         "is_private",
     }
     assert "creator_id" not in out[0] and "bug_id" not in out[0]
+
+
+@pytest.mark.asyncio
+async def test_bug_comments_privacy_boundary_default_excludes_private():
+    bz = AsyncMock()
+    bz.bug_comments = AsyncMock(return_value=[dict(c) for c in _RAW])
+    out = await server.bug_comments(bug_id=42, bz=bz)
+    # The default is include_private_comments=False. We added a 3rd comment that is private.
+    assert len(out) == 2
+    assert all(c["is_private"] is False for c in out)
+
+
+@pytest.mark.asyncio
+async def test_bug_comments_privacy_boundary_override_includes_private():
+    bz = AsyncMock()
+    bz.bug_comments = AsyncMock(return_value=[dict(c) for c in _RAW])
+    out = await server.bug_comments(bug_id=42, include_private_comments=True, bz=bz)
+    # When True, all 3 comments (including the private one) should be returned
+    assert len(out) == 3
+    assert out[-1]["is_private"] is True
+    assert out[-1]["creator"] == "insider@example.com"
 
 
 @pytest.mark.asyncio
