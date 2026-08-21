@@ -18,7 +18,16 @@ from typing import Any, Literal, TypedDict
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
 from fastmcp.exceptions import PromptError, ResourceError, ToolError
-from .mcp_utils import is_textual, mcp_log, safe_filename
+from .mcp_utils import (
+    filter_by_flag,
+    filter_exclude_substrings,
+    filter_history_changes,
+    filter_include_fields,
+    filter_limit,
+    is_textual,
+    mcp_log,
+    safe_filename,
+)
 
 from .lib_bugzilla import Bugzilla
 
@@ -281,30 +290,9 @@ async def bug_history(
     try:
         history = await bz.bug_history(bug_id, new_since=new_since)
 
-        # WHERE who NOT LIKE any(exclude_authors)
-        if exclude_authors:
-            patterns = [p.strip() for p in exclude_authors.split(",") if p.strip()]
-            history = [
-                h
-                for h in history
-                if not any(p in (h.get("who") or "") for p in patterns)
-            ]
-
-        # WHERE field_name IN (changed_fields); drop events left with no match
-        if changed_fields:
-            wanted = {f.strip() for f in changed_fields.split(",") if f.strip()}
-            pruned = []
-            for h in history:
-                kept = [
-                    c for c in h.get("changes", []) if c.get("field_name") in wanted
-                ]
-                if kept:
-                    pruned.append({**h, "changes": kept})
-            history = pruned
-
-        # LIMIT to the most recent N (chronological order preserved)
-        if limit and limit > 0:
-            history = history[-limit:]
+        history = filter_exclude_substrings(history, "who", exclude_authors)
+        history = filter_history_changes(history, changed_fields)
+        history = filter_limit(history, limit)
 
         mcp_log.info(f"[LLM-RES] Returning {len(history)} history items")
         return history
@@ -350,27 +338,12 @@ async def bug_comments(
     try:
         comments = await bz.bug_comments(bug_id, new_since=new_since)
 
-        # WHERE is_private = false (unless explicitly requested)
         if not include_private_comments:
-            comments = [c for c in comments if not c.get("is_private", False)]
+            comments = filter_by_flag(comments, "is_private", False)
 
-        # WHERE creator NOT LIKE any(exclude_creators)
-        if exclude_creators:
-            patterns = [p.strip() for p in exclude_creators.split(",") if p.strip()]
-            comments = [
-                c
-                for c in comments
-                if not any(p in (c.get("creator") or "") for p in patterns)
-            ]
-
-        # LIMIT to the most recent N (chronological order preserved)
-        if limit and limit > 0:
-            comments = comments[-limit:]
-
-        # SELECT include_fields
-        if include_fields is not None:
-            wanted = [f.strip() for f in include_fields.split(",") if f.strip()]
-            comments = [{k: c[k] for k in wanted if k in c} for c in comments]
+        comments = filter_exclude_substrings(comments, "creator", exclude_creators)
+        comments = filter_limit(comments, limit)
+        comments = filter_include_fields(comments, include_fields)
 
         mcp_log.info(f"[LLM-RES] Returning {len(comments)} comments")
         return comments
@@ -931,17 +904,13 @@ async def list_attachments(
     try:
         attachments = await bz.list_attachments(bug_id)
 
-        # WHERE NOT is_obsolete
         if exclude_obsolete:
-            attachments = [a for a in attachments if not a.get("is_obsolete")]
+            attachments = filter_by_flag(attachments, "is_obsolete", False)
 
-        # WHERE is_patch
         if patches_only:
-            attachments = [a for a in attachments if a.get("is_patch")]
+            attachments = filter_by_flag(attachments, "is_patch", True)
 
-        # LIMIT to the most recent N (chronological order preserved)
-        if limit and limit > 0:
-            attachments = attachments[-limit:]
+        attachments = filter_limit(attachments, limit)
 
         mcp_log.info(f"[LLM-RES] Returning {len(attachments)} attachments")
         return attachments
