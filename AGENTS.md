@@ -9,7 +9,8 @@ This document describes common development tasks for the `mcp-bugzilla` project.
 - **Entry point**: `src/mcp_bugzilla/__init__.py` → `main()`
 - **MCP tools/prompts**: `src/mcp_bugzilla/server.py`
 - **Bugzilla REST client** (`Bugzilla` class): `src/mcp_bugzilla/lib_bugzilla.py` — single source of truth for all Bugzilla API interactions
-- **General utilities** (logging, helpers): `src/mcp_bugzilla/mcp_utils.py`
+- **General utilities** (logging, filtering helpers): `src/mcp_bugzilla/mcp_utils.py`
+  - Contains pure Python helper functions for client-side data filtering (e.g., `filter_limit`, `filter_by_flag`), keeping `server.py` focused on MCP routing.
   - `mcp_utils.py` lazily re-exports `Bugzilla` and `BugzillaAPIError` from `lib_bugzilla.py` for backward compatibility — prefer importing directly from `lib_bugzilla`
 - **Tests**: `tests/`
 
@@ -42,9 +43,10 @@ uv run ruff format --check # format
 1. Open `src/mcp_bugzilla/server.py`.
 2. Define a new async function decorated with `@mcp.tool()`.
 3. Add a method to the `Bugzilla` client class in `lib_bugzilla.py` for the authenticated REST call — use the pre-authenticated `self.client` and follow existing methods like `bug_info` / `update_bug` (including their `httpx` error handling) — then call it from the tool.
-4. Raise `ToolError` on Bugzilla API errors.
-5. Add tests: the client method in `tests/test_lib_bugzilla.py` (mock HTTP with `respx`), and the tool in `tests/test_server.py` (with an `AsyncMock` client).
-6. Update relevant documentation wherever applicable
+4. If your tool requires client-side data filtering or shaping, implement pure helper functions in `src/mcp_bugzilla/mcp_utils.py` rather than inline in `server.py`.
+5. Raise `ToolError` on Bugzilla API errors.
+6. Add tests: the client method in `tests/test_lib_bugzilla.py` (mock HTTP with `respx`), and the tool in `tests/test_server.py` (with an `AsyncMock` client).
+7. Update relevant documentation wherever applicable
 
 ## Commit style
 

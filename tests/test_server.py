@@ -448,8 +448,15 @@ _RAW = [
 async def test_bug_comments_default_projection_drops_redundant_fields():
     bz = AsyncMock()
     bz.bug_comments = AsyncMock(return_value=[dict(c) for c in _RAW])
-    out = await server.bug_comments(id=42, bz=bz)
-    assert set(out[0]) == {"count", "id", "creator", "creation_time", "text"}
+    out = await server.bug_comments(bug_id=42, bz=bz)
+    assert set(out[0]) == {
+        "count",
+        "id",
+        "creator",
+        "creation_time",
+        "text",
+        "is_private",
+    }
     assert "creator_id" not in out[0] and "bug_id" not in out[0]
 
 
@@ -457,7 +464,7 @@ async def test_bug_comments_default_projection_drops_redundant_fields():
 async def test_bug_comments_exclude_creators():
     bz = AsyncMock()
     bz.bug_comments = AsyncMock(return_value=[dict(c) for c in _RAW])
-    out = await server.bug_comments(id=42, exclude_creators="bot@monitoring", bz=bz)
+    out = await server.bug_comments(bug_id=42, exclude_creators="bot@monitoring", bz=bz)
     assert len(out) == 1 and out[0]["creator"] == "human@example.com"
 
 
@@ -465,7 +472,7 @@ async def test_bug_comments_exclude_creators():
 async def test_bug_comments_limit_keeps_most_recent():
     bz = AsyncMock()
     bz.bug_comments = AsyncMock(return_value=[dict(c) for c in _RAW])
-    out = await server.bug_comments(id=42, limit=1, include_fields=None, bz=bz)
+    out = await server.bug_comments(bug_id=42, limit=1, include_fields=None, bz=bz)
     assert len(out) == 1 and out[0]["count"] == 1
 
 
@@ -498,7 +505,7 @@ _HIST = [
 async def test_bug_history_changed_fields_keeps_only_matching_changes():
     bz = AsyncMock()
     bz.bug_history = AsyncMock(return_value=[dict(h) for h in _HIST])
-    out = await server.bug_history(id=42, changed_fields="status,resolution", bz=bz)
+    out = await server.bug_history(bug_id=42, changed_fields="status,resolution", bz=bz)
     # only the lifecycle event survives, and only its matching changes are kept
     assert len(out) == 1
     kept = {c["field_name"] for c in out[0]["changes"]}
@@ -509,7 +516,7 @@ async def test_bug_history_changed_fields_keeps_only_matching_changes():
 async def test_bug_history_exclude_authors():
     bz = AsyncMock()
     bz.bug_history = AsyncMock(return_value=[dict(h) for h in _HIST])
-    out = await server.bug_history(id=42, exclude_authors="bot@monitoring", bz=bz)
+    out = await server.bug_history(bug_id=42, exclude_authors="bot@monitoring", bz=bz)
     assert len(out) == 2
     assert all(h["who"] == "human@example.com" for h in out)
 
@@ -518,7 +525,7 @@ async def test_bug_history_exclude_authors():
 async def test_bug_history_limit_keeps_most_recent():
     bz = AsyncMock()
     bz.bug_history = AsyncMock(return_value=[dict(h) for h in _HIST])
-    out = await server.bug_history(id=42, limit=1, bz=bz)
+    out = await server.bug_history(bug_id=42, limit=1, bz=bz)
     assert len(out) == 1 and out[0]["when"] == "2026-03-01T00:00:00Z"  # newest
 
 

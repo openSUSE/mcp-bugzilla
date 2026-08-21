@@ -18,6 +18,8 @@ from typing import Any, Literal, TypedDict
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
 from fastmcp.exceptions import PromptError, ResourceError, ToolError
+
+from .lib_bugzilla import Bugzilla
 from .mcp_utils import (
     filter_by_flag,
     filter_exclude_substrings,
@@ -28,8 +30,6 @@ from .mcp_utils import (
     mcp_log,
     safe_filename,
 )
-
-from .lib_bugzilla import Bugzilla
 
 # The FastMCP instance
 mcp = FastMCP("Bugzilla")
@@ -305,7 +305,8 @@ async def bug_comments(
     bug_id: int,
     include_private_comments: bool = False,
     new_since: datetime | None = None,
-    include_fields: str | None = "count,id,creator,creation_time,text,attachment_id,is_private",
+    include_fields: str
+    | None = "count,id,creator,creation_time,text,attachment_id,is_private",
     exclude_creators: str | None = None,
     limit: int | None = None,
     bz: Bugzilla = _get_bz,
@@ -353,7 +354,11 @@ async def bug_comments(
 
 
 @mcp.tool(
-    annotations={"readOnlyHint": False, "destructiveHint": False, "openWorldHint": True},
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "openWorldHint": True,
+    },
     tags={"write"},
 )
 async def add_comment(
