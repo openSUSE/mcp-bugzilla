@@ -32,7 +32,7 @@ The server provides the following tools for interacting with Bugzilla:
     - `exclude_fields`: Comma-separated field names to drop. To remove a user-object expansion, exclude both the base field and its `*_detail` together, e.g. `"cc,cc_detail"` — excluding the `*_detail` alone has no effect, as Bugzilla re-attaches it while the base field is present
   - **Returns**: A dictionary containing the array `bugs` which lists the requested information about the bugs (status, assignee, summary, description, extensions, etc.)
   - **Note on Bugzilla API parity**: both `include_fields` and `exclude_fields` are native Bugzilla `Bug.get` parameters, forwarded to the API unchanged; the underlying request is standard Bugzilla
-  - **Example**: `bug_info({12345, 67890}, include_fields="id,status,resolution,summary")` fetches two bugs with just the essential scalar fields
+  - **Example**: `bug_info([12345, 67890], include_fields="id,status,resolution,summary")` fetches two bugs with just the essential scalar fields
 
 - **`bug_history(bug_id: int, new_since: Optional[datetime] = None, changed_fields: Optional[str] = None, exclude_authors: Optional[str] = None, limit: Optional[int] = None)`**: Fetches the change history of a given bug ID, with SQL-like controls to keep only the change events that matter for triage.
   - **Parameters**:
