@@ -92,25 +92,36 @@ class Bugzilla:
             transport=RetryTransport(),
         )
 
+    async def _request(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """Issue a request. Surface Bugzilla's own error on HTTP errors;
+        re-raise network errors untouched."""
+        try:
+            r = await self.client.request(method, url, **kwargs)
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:  # caller-fixable: surface detail
+            body = _bugzilla_error_body(e.response)
+            if body is not None:
+                mcp_log.error(
+                    f"[BZ-RES] Failed: {e.response.status_code} "
+                    f"code={body.get('code')} {body.get('message')}"
+                )
+                raise BugzillaAPIError(e.response.status_code, body) from e
+            mcp_log.error(
+                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
+            )
+            raise BugzillaResponseError(e.response) from e
+        except httpx.RequestError as e:  # infra fault: stay loud
+            mcp_log.error(f"[BZ-RES] Network Error: {e}")
+            raise
+        return r
+
     async def close(self):
         await self.client.aclose()
 
     async def server_version(self) -> str:
         """Fetch bugzilla server version"""
-        try:
-            r = await self.client.get("/version")
-            r.raise_for_status()
-            return _json_or_raise(r)["version"]
-
-        except httpx.HTTPStatusError as e:
-            mcp_log.error(
-                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
-            )
-            raise
-
-        except httpx.RequestError as e:
-            mcp_log.error(f"[BZ-RES] Network Error: {e}")
-            raise
+        r = await self._request("GET", "/version")
+        return _json_or_raise(r)["version"]
 
     async def bugzilla_info(self) -> dict[str, Any]:
         """Fetch comprehensive bugzilla server information:
@@ -179,17 +190,7 @@ class Bugzilla:
 
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} params={params}")
 
-        try:
-            r = await self.client.get(url, params=params)
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            mcp_log.error(
-                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
-            )
-            raise
-        except httpx.RequestError as e:
-            mcp_log.error(f"[BZ-RES] Network Error: {e}")
-            raise
+        r = await self._request("GET", url, params=params)
 
         envelope = _json_or_raise(r)
         bugs = envelope.get("bugs", [])
@@ -212,24 +213,7 @@ class Bugzilla:
             params["include_fields"] = include_fields
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}/product params={params}")
 
-        try:
-            r = await self.client.get("/product", params=params)
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            bz_error = _bugzilla_error_body(e.response)
-            if bz_error is not None:
-                mcp_log.error(
-                    f"[BZ-RES] Failed: {e.response.status_code} "
-                    f"code={bz_error.get('code')} {bz_error['message']}"
-                )
-                raise BugzillaAPIError(e.response.status_code, bz_error) from e
-            mcp_log.error(
-                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
-            )
-            raise
-        except httpx.RequestError as e:
-            mcp_log.error(f"[BZ-RES] Network Error: {e}")
-            raise
+        r = await self._request("GET", "/product", params=params)
 
         envelope = _json_or_raise(r)
         products = envelope.get("products", [])
@@ -247,17 +231,7 @@ class Bugzilla:
         params = {"include_fields": "id,flags"}
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} params={params}")
 
-        try:
-            r = await self.client.get(url, params=params)
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            mcp_log.error(
-                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
-            )
-            raise
-        except httpx.RequestError as e:
-            mcp_log.error(f"[BZ-RES] Network Error: {e}")
-            raise
+        r = await self._request("GET", url, params=params)
 
         bugs = _json_or_raise(r).get("bugs", [])
         flags = bugs[0].get("flags", []) if bugs else []
@@ -275,17 +249,7 @@ class Bugzilla:
 
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} params={params}")
 
-        try:
-            r = await self.client.get(url, params=params)
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            mcp_log.error(
-                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
-            )
-            raise
-        except httpx.RequestError as e:
-            mcp_log.error(f"[BZ-RES] Network Error: {e}")
-            raise
+        r = await self._request("GET", url, params=params)
 
         data = _json_or_raise(r).get("bugs", [])
         history = data[0].get("history", []) if data else []
@@ -304,17 +268,7 @@ class Bugzilla:
 
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} params={params}")
 
-        try:
-            r = await self.client.get(url, params=params)
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            mcp_log.error(
-                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
-            )
-            raise
-        except httpx.RequestError as e:
-            mcp_log.error(f"[BZ-RES] Network Error: {e}")
-            raise
+        r = await self._request("GET", url, params=params)
 
         # The response structure is {"bugs": {"<id>": {"comments": [...]}}}
         data = (
@@ -332,17 +286,7 @@ class Bugzilla:
         url = f"/bug/{bug_id}/comment"
         mcp_log.info(f"[BZ-REQ] POST {self.api_url}{url} json={payload}")
 
-        try:
-            r = await self.client.post(url, json=payload)
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            mcp_log.error(
-                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
-            )
-            raise
-        except httpx.RequestError as e:
-            mcp_log.error(f"[BZ-RES] Network Error: {e}")
-            raise
+        r = await self._request("POST", url, json=payload)
 
         data = _json_or_raise(r)
         mcp_log.info("[BZ-RES] Comment added successfully")
@@ -365,17 +309,7 @@ class Bugzilla:
 
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}/bug params={params}")
 
-        try:
-            r = await self.client.get("/bug", params=params)
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            mcp_log.error(
-                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
-            )
-            raise
-        except httpx.RequestError as e:
-            mcp_log.error(f"[BZ-RES] Network Error: {e}")
-            raise
+        r = await self._request("GET", "/bug", params=params)
 
         envelope = _json_or_raise(r)
         bugs = envelope.get("bugs", [])
@@ -393,23 +327,7 @@ class Bugzilla:
         url = f"/bug/{bug_id}"
         mcp_log.info(f"[BZ-REQ] PUT {self.api_url}{url} json={payload}")
 
-        try:
-            r = await self.client.put(url, json=payload)
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            if (bz_error := _bugzilla_error_body(e.response)) is not None:
-                # Surface structured Bugzilla error (e.g., validation rejection)
-                mcp_log.error(
-                    f"[BZ-RES] Failed: {e.response.status_code} code={bz_error.get('code')} {bz_error['message']}"
-                )
-                raise BugzillaAPIError(e.response.status_code, bz_error) from e
-            mcp_log.error(
-                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
-            )
-            raise
-        except httpx.RequestError as e:
-            mcp_log.error(f"[BZ-RES] Network Error: {e}")
-            raise
+        r = await self._request("PUT", url, json=payload)
 
         data = _json_or_raise(r)
         mcp_log.info("[BZ-RES] Bug updated successfully")
@@ -426,17 +344,7 @@ class Bugzilla:
         url = "/bug"
         mcp_log.info(f"[BZ-REQ] POST {self.api_url}{url} json={fields}")
 
-        try:
-            r = await self.client.post(url, json=fields)
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            mcp_log.error(
-                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
-            )
-            raise
-        except httpx.RequestError as e:
-            mcp_log.error(f"[BZ-RES] Network Error: {e}")
-            raise
+        r = await self._request("POST", url, json=fields)
 
         data = _json_or_raise(r)
         mcp_log.info(f"[BZ-RES] Created bug {data.get('id')}")
@@ -453,17 +361,7 @@ class Bugzilla:
             f"[BZ-REQ] POST {self.api_url}{url} file_name={payload.get('file_name')!r}"
         )
 
-        try:
-            r = await self.client.post(url, json=payload)
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            mcp_log.error(
-                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
-            )
-            raise
-        except httpx.RequestError as e:
-            mcp_log.error(f"[BZ-RES] Network Error: {e}")
-            raise
+        r = await self._request("POST", url, json=payload)
 
         data = _json_or_raise(r)
         mcp_log.info(f"[BZ-RES] Attachment(s) {data.get('ids')} added to bug {bug_id}")
@@ -475,17 +373,7 @@ class Bugzilla:
         url = f"/bug/{bug_id}/attachment"
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} exclude_fields=data")
 
-        try:
-            r = await self.client.get(url, params={"exclude_fields": "data"})
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            mcp_log.error(
-                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
-            )
-            raise
-        except httpx.RequestError as e:
-            mcp_log.error(f"[BZ-RES] Network Error: {e}")
-            raise
+        r = await self._request("GET", url, params={"exclude_fields": "data"})
 
         # /bug/{id}/attachment returns {"bugs": {"<bug_id>": [ {att}, ... ]}}
         attachments = _json_or_raise(r).get("bugs", {}).get(str(bug_id), [])
@@ -498,17 +386,7 @@ class Bugzilla:
         # Don't log the (possibly large / binary) base64 blob in the response.
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url}")
 
-        try:
-            r = await self.client.get(url)
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            mcp_log.error(
-                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
-            )
-            raise
-        except httpx.RequestError as e:
-            mcp_log.error(f"[BZ-RES] Network Error: {e}")
-            raise
+        r = await self._request("GET", url)
 
         # /bug/attachment/{id} returns {"attachments": {"<attachment_id>": {att}}}
         attachment = _json_or_raise(r).get("attachments", {}).get(str(attachment_id))
