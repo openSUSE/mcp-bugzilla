@@ -105,11 +105,11 @@ class Bugzilla:
                     f"[BZ-RES] Failed: {e.response.status_code} "
                     f"code={body.get('code')} {body.get('message')}"
                 )
-                raise BugzillaAPIError(e.response.status_code, body) from e
+                raise BugzillaAPIError(e.response.status_code, body) from None
             mcp_log.error(
                 f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
             )
-            raise BugzillaResponseError(e.response) from e
+            raise BugzillaResponseError(e.response) from None
         except httpx.RequestError as e:  # infra fault: stay loud
             mcp_log.error(f"[BZ-RES] Network Error: {e}")
             raise
