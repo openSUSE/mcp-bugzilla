@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [v0.21.0] - 2026-09-15
+
+### Fixed
+- `Bugzilla._request` now surfaces Bugzilla's own error messages (e.g., "changedafter is not a valid field name") to callers via `BugzillaAPIError`/`BugzillaResponseError` instead of generic `httpx.HTTPStatusError` text. Collapses thirteen duplicated try/except blocks. Raw httpx error messages (which embed the full URL with API key) are no longer forwarded to callers.
+- Generic `httpx` exceptions are no longer chained (`from None`) in error paths, preventing the full request URL from leaking into tracebacks.
+
+### Changed
+- Standardized parameter names to `bug_id` (from `id`) in `bug_history`, `bug_comments`, and `summarize_bug_prompt` for consistency.
+- `bug_info`'s `bug_ids` parameter type changed from `set[int]` to `list[int]` for better JSON schema compatibility.
+- Data filtering logic consolidated from `server.py` into `mcp_utils.py`.
+- `is_private` field now exposed in `bug_comments` output.
+- `add_comment` tool annotation `destructiveHint` changed from `True` to `False` for consistency with other append-only write tools.
+- Docstrings refined across multiple tools for clarity and consistent capitalization.
+
+### Chore
+- Bump `fastmcp` from 3.4.7 to 4.0.3
+
 ## [v0.20.0] - 2026-08-17
 
 ### Added
