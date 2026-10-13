@@ -382,17 +382,26 @@ async def bugs_quicksearch(
     | None = "id,product,component,assigned_to,status,resolution,summary,last_change_time",
     limit: int | None = 50,
     offset: int | None = 0,
+    order: str | None = "relevance",
     bz: Bugzilla = _get_bz,
 ) -> dict[str, Any]:
     """Search bugs using Bugzilla's Quicksearch syntax.
 
-    To reduce the token limit & response time, this only returns a subset of fields for each bug.
+    Results are capped to `limit` bugs (default: 50). Use `offset` for pagination.
+    To reduce token limit and response time, this only returns a subset of fields for each bug.
     The user can query full details of each bug using the `bug_info` tool.
     Returns the top-level bug data envelope containing the matched bugs.
+
+    Sorting (`order`):
+    - "relevance" (default): Relevance ranking for text searches. Note: for pure field searches
+      (e.g., `product:openSUSE`), Bugzilla ignores "relevance" and sorts by bug ID ascending (oldest first).
+    - "bug_id DESC": Sort by newest bugs first. Recommended when searching for recent bugs!
+    - "changeddate DESC": Sort by most recently modified bugs first.
+    - "opendate DESC": Sort by most recently created bugs first.
     """
 
     mcp_log.info(
-        f"[LLM-REQ] bugs_quicksearch(query='{query}', include_fields='{include_fields}', limit={limit}, offset={offset})"
+        f"[LLM-REQ] bugs_quicksearch(query='{query}', include_fields='{include_fields}', limit={limit}, offset={offset}, order='{order}')"
     )
 
     try:
@@ -403,6 +412,7 @@ async def bugs_quicksearch(
             or "id,product,component,assigned_to,status,resolution,summary,last_change_time",
             limit or 50,
             offset or 0,
+            order or "relevance",
         )
 
         mcp_log.info("[LLM-RES] Returning quicksearch envelope")

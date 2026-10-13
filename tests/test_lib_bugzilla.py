@@ -369,6 +369,27 @@ async def test_quicksearch(bz_client):
         assert params["offset"] == "0"
         assert "include_fields" in params
         assert params["include_fields"] == "id,product"
+        assert params["order"] == "relevance"
+
+
+@pytest.mark.asyncio
+async def test_quicksearch_custom_order(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/bug").mock(
+            return_value=Response(200, json={"bugs": [{"id": 42}]})
+        )
+
+        search_env = await bz_client.quicksearch(
+            "product:Foo",
+            include_fields="id,product",
+            limit=10,
+            offset=0,
+            order="bug_id DESC",
+        )
+        assert len(search_env["bugs"]) == 1
+        assert route.called
+        params = route.calls.last.request.url.params
+        assert params["order"] == "bug_id DESC"
 
 
 @pytest.mark.asyncio
