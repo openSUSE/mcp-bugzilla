@@ -886,3 +886,30 @@ async def test_get_component_defaults_requires_product_or_bug_id():
         await server.get_component_defaults(component="Release Notes", bz=bz)
 
     bz.get_product.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_bugzilla_server_info_tool():
+    bz = AsyncMock()
+    bz.bugzilla_info = AsyncMock(
+        return_value={
+            "url": "https://example.com",
+            "version": "5.0.4",
+            "errors": {"time": "empty body"},
+        }
+    )
+
+    result = await server.bugzilla_server_info(bz=bz)
+    assert result["version"] == "5.0.4"
+    assert result["errors"]["time"] == "empty body"
+
+
+@pytest.mark.asyncio
+async def test_bugzilla_server_info_tool_fails_all():
+    bz = AsyncMock()
+    bz.bugzilla_info = AsyncMock(
+        side_effect=RuntimeError("All server info endpoints failed: ...")
+    )
+
+    with pytest.raises(ToolError, match="Failed to fetch bugzilla server info"):
+        await server.bugzilla_server_info(bz=bz)

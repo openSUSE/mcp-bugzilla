@@ -48,6 +48,79 @@ async def test_bugzilla_info(bz_client):
         assert info["timezone"] == "UTC"
         assert info["time"] == "2026-03-18T10:00:00Z"
         assert info["parameters"]["urlbase"] == "http://mock"
+        assert "errors" not in info
+
+
+@pytest.mark.asyncio
+async def test_bugzilla_info_partial_empty_body(bz_client):
+    """Test that an empty body or non-JSON on one endpoint (/rest/time) degrades gracefully."""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/version").mock(
+            return_value=Response(200, json={"version": "5.0.4"})
+        )
+        respx_mock.get("/rest/extensions").mock(
+            return_value=Response(200, json={"extensions": {"MockExtension": {}}})
+        )
+        # Intermittent issue reported in #147: HTTP 200 with empty body
+        respx_mock.get("/rest/time").mock(
+            return_value=Response(
+                200, content=b"", headers={"content-type": "application/json"}
+            )
+        )
+        respx_mock.get("/rest/parameters").mock(
+            return_value=Response(200, json={"parameters": {"urlbase": "http://mock"}})
+        )
+
+        info = await bz_client.bugzilla_info()
+        assert info["url"] == MOCK_URL.rstrip("/rest")
+        assert info["version"] == "5.0.4"
+        assert "MockExtension" in info["extensions"]
+        assert info["time"] is None
+        assert info["timezone"] is None
+        assert info["parameters"]["urlbase"] == "http://mock"
+        assert "errors" in info
+        assert "time" in info["errors"]
+
+
+@pytest.mark.asyncio
+async def test_bugzilla_info_partial_http_error(bz_client):
+    """Test that an HTTP error on one endpoint (/rest/extensions) degrades gracefully."""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/version").mock(
+            return_value=Response(200, json={"version": "5.0.4"})
+        )
+        respx_mock.get("/rest/extensions").mock(
+            return_value=Response(500, text="Internal Server Error")
+        )
+        respx_mock.get("/rest/time").mock(
+            return_value=Response(
+                200, json={"tz_name": "UTC", "web_time": "2026-03-18T10:00:00Z"}
+            )
+        )
+        respx_mock.get("/rest/parameters").mock(
+            return_value=Response(200, json={"parameters": {"urlbase": "http://mock"}})
+        )
+
+        info = await bz_client.bugzilla_info()
+        assert info["version"] == "5.0.4"
+        assert info["extensions"] is None
+        assert info["timezone"] == "UTC"
+        assert info["time"] == "2026-03-18T10:00:00Z"
+        assert "errors" in info
+        assert "extensions" in info["errors"]
+
+
+@pytest.mark.asyncio
+async def test_bugzilla_info_all_fail_raises(bz_client):
+    """Test that if all endpoints fail, bugzilla_info raises RuntimeError."""
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/version").mock(return_value=Response(500))
+        respx_mock.get("/rest/extensions").mock(return_value=Response(500))
+        respx_mock.get("/rest/time").mock(return_value=Response(500))
+        respx_mock.get("/rest/parameters").mock(return_value=Response(500))
+
+        with pytest.raises(RuntimeError, match="All server info endpoints failed"):
+            await bz_client.bugzilla_info()
 
 
 @pytest.mark.asyncio

@@ -125,48 +125,65 @@ class Bugzilla:
 
     async def bugzilla_info(self) -> dict[str, Any]:
         """Fetch comprehensive bugzilla server information:
-        it returns url, version, extensions, timezone, time and parameters for the current user in a dictionary
+        it returns url, version, extensions, timezone, time and parameters for the current user in a dictionary.
+        If individual endpoints fail, partial results are returned with an 'errors' field.
         """
-        try:
-            # Fetch everything concurrently
-            version_r, extensions_r, time_r, parameters_r = await asyncio.gather(
-                self.client.get("/version"),
-                self.client.get("/extensions"),
-                self.client.get("/time"),
-                self.client.get("/parameters"),
-            )
 
-            # Raise for status on all
-            for r in [version_r, extensions_r, time_r, parameters_r]:
+        async def _fetch_endpoint(
+            endpoint: str,
+        ) -> tuple[dict[str, Any] | None, str | None]:
+            try:
+                r = await self.client.get(endpoint)
                 r.raise_for_status()
+                return _json_or_raise(r), None
+            except Exception as e:
+                mcp_log.warning(f"[BZ-RES] Failed to fetch {endpoint}: {e}")
+                return None, str(e)
 
-            # Combine results
-            version_data = _json_or_raise(version_r)
-            extensions_data = _json_or_raise(extensions_r)
-            time_data = _json_or_raise(time_r)
-            parameters_data = _json_or_raise(parameters_r)
+        (
+            (version_data, v_err),
+            (ext_data, ext_err),
+            (time_data, t_err),
+            (params_data, p_err),
+        ) = await asyncio.gather(
+            _fetch_endpoint("/version"),
+            _fetch_endpoint("/extensions"),
+            _fetch_endpoint("/time"),
+            _fetch_endpoint("/parameters"),
+        )
 
-            result = {
-                "url": self.base_url,
-                "version": version_data.get("version"),
-                "extensions": extensions_data.get("extensions", {}),
-                "timezone": time_data.get("tz_name"),
-                "time": time_data.get("web_time"),
-                "parameters": parameters_data.get("parameters", {}),
-            }
+        errors: dict[str, str] = {}
+        if v_err:
+            errors["version"] = v_err
+        if ext_err:
+            errors["extensions"] = ext_err
+        if t_err:
+            errors["time"] = t_err
+        if p_err:
+            errors["parameters"] = p_err
+
+        if len(errors) == 4:
+            mcp_log.error(f"[BZ-RES] All server info endpoints failed: {errors}")
+            raise RuntimeError(f"All server info endpoints failed: {errors}")
+
+        result: dict[str, Any] = {
+            "url": self.base_url,
+            "version": version_data.get("version") if version_data else None,
+            "extensions": ext_data.get("extensions", {}) if ext_data else None,
+            "timezone": time_data.get("tz_name") if time_data else None,
+            "time": time_data.get("web_time") if time_data else None,
+            "parameters": params_data.get("parameters", {}) if params_data else None,
+        }
+        if errors:
+            result["errors"] = errors
+            mcp_log.warning(
+                f"[BZ-RES] Retrieved partial bugzilla server info from {self.base_url} (failed: {list(errors.keys())})"
+            )
+        else:
             mcp_log.info(
                 f"[BZ-RES] Retrieved bugzilla server info from {self.base_url}"
             )
-            return result
-
-        except httpx.HTTPStatusError as e:
-            mcp_log.error(
-                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
-            )
-            raise
-        except httpx.RequestError as e:
-            mcp_log.error(f"[BZ-RES] Network Error: {e}")
-            raise
+        return result
 
     async def bug_info(
         self,
