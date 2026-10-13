@@ -886,3 +886,35 @@ async def test_get_component_defaults_requires_product_or_bug_id():
         await server.get_component_defaults(component="Release Notes", bz=bz)
 
     bz.get_product.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_bugs_quicksearch_default_order():
+    bz = AsyncMock()
+    bz.quicksearch = AsyncMock(return_value={"bugs": [{"id": 1}]})
+
+    res = await server.bugs_quicksearch("product:openSUSE", bz=bz)
+    assert res == {"bugs": [{"id": 1}]}
+    bz.quicksearch.assert_awaited_once_with(
+        "product:openSUSE",
+        "id,product,component,assigned_to,status,resolution,summary,last_change_time",
+        50,
+        0,
+        "relevance",
+    )
+
+
+@pytest.mark.asyncio
+async def test_bugs_quicksearch_custom_order():
+    bz = AsyncMock()
+    bz.quicksearch = AsyncMock(return_value={"bugs": [{"id": 100}]})
+
+    res = await server.bugs_quicksearch("product:openSUSE", order="bug_id DESC", bz=bz)
+    assert res == {"bugs": [{"id": 100}]}
+    bz.quicksearch.assert_awaited_once_with(
+        "product:openSUSE",
+        "id,product,component,assigned_to,status,resolution,summary,last_change_time",
+        50,
+        0,
+        "bug_id DESC",
+    )
