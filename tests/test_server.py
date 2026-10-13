@@ -886,3 +886,17 @@ async def test_get_component_defaults_requires_product_or_bug_id():
         await server.get_component_defaults(component="Release Notes", bz=bz)
 
     bz.get_product.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_quicksearch_syntax_resource_returns_bundled_markdown():
+    bz = AsyncMock()
+    doc = await server.quicksearch_syntax_resource(bz=bz)
+
+    assert isinstance(doc, str)
+    assert "# Bugzilla Quicksearch Syntax Reference" in doc
+    assert "product:" in doc
+    assert "component:" in doc
+    assert "ALL" in doc
+    # Verify no network requests were made to Bugzilla
+    assert bz.client.get.call_count == 0
