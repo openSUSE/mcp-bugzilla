@@ -889,14 +889,32 @@ async def test_get_component_defaults_requires_product_or_bug_id():
 
 
 @pytest.mark.asyncio
-async def test_quicksearch_syntax_resource_returns_bundled_markdown():
+async def test_bugs_quicksearch_default_order():
     bz = AsyncMock()
-    doc = await server.quicksearch_syntax_resource(bz=bz)
+    bz.quicksearch = AsyncMock(return_value={"bugs": [{"id": 1}]})
 
-    assert isinstance(doc, str)
-    assert "# Bugzilla Quicksearch Syntax Reference" in doc
-    assert "product:" in doc
-    assert "component:" in doc
-    assert "ALL" in doc
-    # Verify no network requests were made to Bugzilla
-    assert bz.client.get.call_count == 0
+    res = await server.bugs_quicksearch("product:openSUSE", bz=bz)
+    assert res == {"bugs": [{"id": 1}]}
+    bz.quicksearch.assert_awaited_once_with(
+        "product:openSUSE",
+        "id,product,component,assigned_to,status,resolution,summary,last_change_time",
+        50,
+        0,
+        "relevance",
+    )
+
+
+@pytest.mark.asyncio
+async def test_bugs_quicksearch_custom_order():
+    bz = AsyncMock()
+    bz.quicksearch = AsyncMock(return_value={"bugs": [{"id": 100}]})
+
+    res = await server.bugs_quicksearch("product:openSUSE", order="bug_id DESC", bz=bz)
+    assert res == {"bugs": [{"id": 100}]}
+    bz.quicksearch.assert_awaited_once_with(
+        "product:openSUSE",
+        "id,product,component,assigned_to,status,resolution,summary,last_change_time",
+        50,
+        0,
+        "bug_id DESC",
+    )
