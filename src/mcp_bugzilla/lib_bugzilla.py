@@ -3,7 +3,6 @@
 Moved from mcp_utils.py for better modularity.
 """
 
-import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -142,66 +141,6 @@ class Bugzilla:
         if names:
             return {k: v for k, v in params.items() if k in names}
         return params
-
-    async def bugzilla_info(self) -> dict[str, Any]:
-        """Fetch comprehensive bugzilla server information:
-        it returns url, version, extensions, timezone, time and parameters for the current user in a dictionary.
-        If individual endpoints fail, partial results are returned with an 'errors' field.
-        """
-
-        async def _safe_call(coro: Any, name: str) -> tuple[Any, str | None]:
-            try:
-                return await coro, None
-            except Exception as e:
-                mcp_log.warning(f"[BZ-RES] Failed to fetch {name}: {e}")
-                return None, str(e)
-
-        (
-            (version_data, v_err),
-            (ext_data, ext_err),
-            (time_data, t_err),
-            (params_data, p_err),
-        ) = await asyncio.gather(
-            _safe_call(self.server_version(), "version"),
-            _safe_call(self.server_extensions(), "extensions"),
-            _safe_call(self.server_time(), "time"),
-            _safe_call(self.server_parameters(), "parameters"),
-        )
-
-        errors: dict[str, str] = {}
-        if v_err:
-            errors["version"] = v_err
-        if ext_err:
-            errors["extensions"] = ext_err
-        if t_err:
-            errors["time"] = t_err
-        if p_err:
-            errors["parameters"] = p_err
-
-        if len(errors) == 4:
-            mcp_log.error(f"[BZ-RES] All server info endpoints failed: {errors}")
-            raise RuntimeError(f"All server info endpoints failed: {errors}")
-
-        result: dict[str, Any] = {
-            "url": self.base_url,
-            "version": version_data,
-            "extensions": ext_data,
-            "timezone": time_data.get("tz_name")
-            if isinstance(time_data, dict)
-            else None,
-            "time": time_data.get("web_time") if isinstance(time_data, dict) else None,
-            "parameters": params_data,
-        }
-        if errors:
-            result["errors"] = errors
-            mcp_log.warning(
-                f"[BZ-RES] Retrieved partial bugzilla server info from {self.base_url} (failed: {list(errors.keys())})"
-            )
-        else:
-            mcp_log.info(
-                f"[BZ-RES] Retrieved bugzilla server info from {self.base_url}"
-            )
-        return result
 
     async def bug_info(
         self,
