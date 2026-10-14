@@ -123,21 +123,37 @@ class Bugzilla:
         r = await self._request("GET", "/version")
         return _json_or_raise(r)["version"]
 
+    async def server_extensions(self) -> dict[str, Any]:
+        """Fetch bugzilla extensions installed on the server"""
+        r = await self._request("GET", "/extensions")
+        envelope = _json_or_raise(r)
+        return envelope.get("extensions", envelope)
+
+    async def server_time(self) -> dict[str, Any]:
+        """Fetch bugzilla server time and timezone information"""
+        r = await self._request("GET", "/time")
+        return _json_or_raise(r)
+
+    async def server_parameters(self, names: list[str] | None = None) -> dict[str, Any]:
+        """Fetch bugzilla server configuration parameters"""
+        r = await self._request("GET", "/parameters")
+        envelope = _json_or_raise(r)
+        params = envelope.get("parameters", envelope)
+        if names:
+            return {k: v for k, v in params.items() if k in names}
+        return params
+
     async def bugzilla_info(self) -> dict[str, Any]:
         """Fetch comprehensive bugzilla server information:
         it returns url, version, extensions, timezone, time and parameters for the current user in a dictionary.
         If individual endpoints fail, partial results are returned with an 'errors' field.
         """
 
-        async def _fetch_endpoint(
-            endpoint: str,
-        ) -> tuple[dict[str, Any] | None, str | None]:
+        async def _safe_call(coro: Any, name: str) -> tuple[Any, str | None]:
             try:
-                r = await self.client.get(endpoint)
-                r.raise_for_status()
-                return _json_or_raise(r), None
+                return await coro, None
             except Exception as e:
-                mcp_log.warning(f"[BZ-RES] Failed to fetch {endpoint}: {e}")
+                mcp_log.warning(f"[BZ-RES] Failed to fetch {name}: {e}")
                 return None, str(e)
 
         (
@@ -146,10 +162,10 @@ class Bugzilla:
             (time_data, t_err),
             (params_data, p_err),
         ) = await asyncio.gather(
-            _fetch_endpoint("/version"),
-            _fetch_endpoint("/extensions"),
-            _fetch_endpoint("/time"),
-            _fetch_endpoint("/parameters"),
+            _safe_call(self.server_version(), "version"),
+            _safe_call(self.server_extensions(), "extensions"),
+            _safe_call(self.server_time(), "time"),
+            _safe_call(self.server_parameters(), "parameters"),
         )
 
         errors: dict[str, str] = {}
@@ -168,11 +184,13 @@ class Bugzilla:
 
         result: dict[str, Any] = {
             "url": self.base_url,
-            "version": version_data.get("version") if version_data else None,
-            "extensions": ext_data.get("extensions", {}) if ext_data else None,
-            "timezone": time_data.get("tz_name") if time_data else None,
-            "time": time_data.get("web_time") if time_data else None,
-            "parameters": params_data.get("parameters", {}) if params_data else None,
+            "version": version_data,
+            "extensions": ext_data,
+            "timezone": time_data.get("tz_name")
+            if isinstance(time_data, dict)
+            else None,
+            "time": time_data.get("web_time") if isinstance(time_data, dict) else None,
+            "parameters": params_data,
         }
         if errors:
             result["errors"] = errors

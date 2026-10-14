@@ -889,30 +889,94 @@ async def test_get_component_defaults_requires_product_or_bug_id():
 
 
 @pytest.mark.asyncio
-async def test_bugzilla_server_info_tool():
+async def test_bugzilla_version_tool():
     bz = AsyncMock()
-    bz.bugzilla_info = AsyncMock(
-        return_value={
-            "url": "https://example.com",
-            "version": "5.0.4",
-            "errors": {"time": "empty body"},
-        }
-    )
+    bz.server_version = AsyncMock(return_value="5.0.4")
 
-    result = await server.bugzilla_server_info(bz=bz)
-    assert result["version"] == "5.0.4"
-    assert result["errors"]["time"] == "empty body"
+    result = await server.bugzilla_version(bz=bz)
+    assert result == "5.0.4"
+    bz.server_version.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_bugzilla_server_info_tool_fails_all():
+async def test_bugzilla_version_tool_fails():
     bz = AsyncMock()
-    bz.bugzilla_info = AsyncMock(
-        side_effect=RuntimeError("All server info endpoints failed: ...")
+    bz.server_version = AsyncMock(side_effect=RuntimeError("Connection refused"))
+
+    with pytest.raises(ToolError, match="Failed to fetch bugzilla version"):
+        await server.bugzilla_version(bz=bz)
+
+
+@pytest.mark.asyncio
+async def test_bugzilla_extensions_tool():
+    bz = AsyncMock()
+    bz.server_extensions = AsyncMock(return_value={"MockExtension": {}})
+
+    result = await server.bugzilla_extensions(bz=bz)
+    assert result == {"MockExtension": {}}
+    bz.server_extensions.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_bugzilla_extensions_tool_fails():
+    bz = AsyncMock()
+    bz.server_extensions = AsyncMock(side_effect=RuntimeError("Internal Server Error"))
+
+    with pytest.raises(ToolError, match="Failed to fetch bugzilla extensions"):
+        await server.bugzilla_extensions(bz=bz)
+
+
+@pytest.mark.asyncio
+async def test_bugzilla_time_tool():
+    bz = AsyncMock()
+    bz.server_time = AsyncMock(
+        return_value={"tz_name": "UTC", "web_time": "2026-03-18T10:00:00Z"}
     )
 
-    with pytest.raises(ToolError, match="Failed to fetch bugzilla server info"):
-        await server.bugzilla_server_info(bz=bz)
+    result = await server.bugzilla_time(bz=bz)
+    assert result == {"tz_name": "UTC", "web_time": "2026-03-18T10:00:00Z"}
+    bz.server_time.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_bugzilla_time_tool_fails():
+    bz = AsyncMock()
+    bz.server_time = AsyncMock(side_effect=RuntimeError("Empty response body"))
+
+    with pytest.raises(ToolError, match="Failed to fetch bugzilla time"):
+        await server.bugzilla_time(bz=bz)
+
+
+@pytest.mark.asyncio
+async def test_bugzilla_parameters_tool():
+    bz = AsyncMock()
+    bz.server_parameters = AsyncMock(
+        return_value={"urlbase": "http://mock", "maintainer": "admin@example.com"}
+    )
+
+    result = await server.bugzilla_parameters(bz=bz)
+    assert result == {"urlbase": "http://mock", "maintainer": "admin@example.com"}
+    bz.server_parameters.assert_awaited_once_with(names=None)
+
+
+@pytest.mark.asyncio
+async def test_bugzilla_parameters_tool_filtering():
+    bz = AsyncMock()
+    bz.server_parameters = AsyncMock(return_value={"urlbase": "http://mock"})
+
+    result = await server.bugzilla_parameters(names=["urlbase"], bz=bz)
+    assert result == {"urlbase": "http://mock"}
+    bz.server_parameters.assert_awaited_once_with(names=["urlbase"])
+
+
+@pytest.mark.asyncio
+async def test_bugzilla_parameters_tool_fails():
+    bz = AsyncMock()
+    bz.server_parameters = AsyncMock(side_effect=RuntimeError("Forbidden"))
+
+    with pytest.raises(ToolError, match="Failed to fetch bugzilla parameters"):
+        await server.bugzilla_parameters(bz=bz)
+
 
 @pytest.mark.asyncio
 async def test_bugs_quicksearch_default_order():
