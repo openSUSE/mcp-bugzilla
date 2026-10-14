@@ -913,3 +913,34 @@ async def test_bugzilla_server_info_tool_fails_all():
 
     with pytest.raises(ToolError, match="Failed to fetch bugzilla server info"):
         await server.bugzilla_server_info(bz=bz)
+
+@pytest.mark.asyncio
+async def test_bugs_quicksearch_default_order():
+    bz = AsyncMock()
+    bz.quicksearch = AsyncMock(return_value={"bugs": [{"id": 1}]})
+
+    res = await server.bugs_quicksearch("product:openSUSE", bz=bz)
+    assert res == {"bugs": [{"id": 1}]}
+    bz.quicksearch.assert_awaited_once_with(
+        "product:openSUSE",
+        "id,product,component,assigned_to,status,resolution,summary,last_change_time",
+        50,
+        0,
+        "relevance",
+    )
+
+
+@pytest.mark.asyncio
+async def test_bugs_quicksearch_custom_order():
+    bz = AsyncMock()
+    bz.quicksearch = AsyncMock(return_value={"bugs": [{"id": 100}]})
+
+    res = await server.bugs_quicksearch("product:openSUSE", order="bug_id DESC", bz=bz)
+    assert res == {"bugs": [{"id": 100}]}
+    bz.quicksearch.assert_awaited_once_with(
+        "product:openSUSE",
+        "id,product,component,assigned_to,status,resolution,summary,last_change_time",
+        50,
+        0,
+        "bug_id DESC",
+    )

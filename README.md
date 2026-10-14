@@ -180,17 +180,18 @@ The server provides the following tools for interacting with Bugzilla:
 
 #### Bug Search
 
-- **`bugs_quicksearch(query: str, include_fields: str = "...", limit: int = 50, offset: int = 0)`**: Executes a search for bugs using Bugzilla's powerful [quicksearch syntax](https://bugzilla.readthedocs.io/en/latest/using/finding.html#quicksearch).
+- **`bugs_quicksearch(query: str, include_fields: str = "...", limit: int = 50, offset: int = 0, order: str = "relevance")`**: Executes a search for bugs using Bugzilla's powerful [quicksearch syntax](https://bugzilla.readthedocs.io/en/latest/using/finding.html#quicksearch).
   - **Parameters**:
     - `query`: A quicksearch query string (e.g., `"product:Firefox"`)
     - `include_fields`: Comma-separated list of fields to return (default: `"id,product,component,assigned_to,status,resolution,summary,last_change_time"`)
     - `limit`: Maximum number of results to return (default: `50`)
     - `offset`: Number of results to skip for pagination (default: `0`)
+    - `order`: Sort order (default: `"relevance"`). For field searches, use `"bug_id DESC"` to sort newest bugs first, or `"changeddate DESC"` to sort by recently modified.
   - **Returns**: A list of dictionaries, each containing essential bug fields
-  - **Example**: `bugs_quicksearch("product:Firefox status:NEW", limit=10)`
+  - **Example**: `bugs_quicksearch("product:Firefox status:NEW", limit=10, order="bug_id DESC")`
 
 - **`quicksearch_syntax_resource()`**: Returns documentation on Bugzilla's quicksearch syntax.
-  - **Returns**: A string containing HTML documentation.
+  - **Returns**: A string containing Markdown documentation.
 
 - **`summarize_bug_prompt(bug_id: int)`**: Returns a detailed summary prompt for all comments of a given bug ID.
   - **Returns**: A well-structured summary of the bug's comments including usernames (bold italic) and dates (bold).
@@ -590,6 +591,10 @@ bugs_quicksearch("product:Firefox component:JavaScript status:NEW priority:P1")
 # Use pagination
 page1 = bugs_quicksearch("status:NEW", limit=50, offset=0)
 page2 = bugs_quicksearch("status:NEW", limit=50, offset=50)
+
+# Sort by newest bugs first or recently updated
+recent_bugs = bugs_quicksearch("product:Firefox status:NEW", order="bug_id DESC")
+recently_updated = bugs_quicksearch("product:Firefox", order="changeddate DESC")
 ```
 
 ### Example 6: Using with Red Hat Bugzilla
