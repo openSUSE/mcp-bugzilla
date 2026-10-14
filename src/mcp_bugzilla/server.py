@@ -17,7 +17,7 @@ from typing import Any, Literal, TypedDict
 
 from fastmcp import FastMCP
 from fastmcp.dependencies import CurrentHeaders, Depends
-from fastmcp.exceptions import PromptError, ResourceError, ToolError
+from fastmcp.exceptions import PromptError, ToolError
 
 from .lib_bugzilla import Bugzilla
 from .mcp_utils import (
@@ -30,6 +30,7 @@ from .mcp_utils import (
     mcp_log,
     safe_filename,
 )
+from .quicksearch_syntax import QUICKSEARCH_SYNTAX_DOC
 
 # The FastMCP instance
 mcp = FastMCP("Bugzilla")
@@ -424,27 +425,13 @@ async def bugs_quicksearch(
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
 async def quicksearch_syntax_resource(bz: Bugzilla = _get_bz) -> str:
-    """Access the documentation of the Bugzilla Quicksearch syntax. Use this to learn how to construct advanced search queries. Response is in HTML."""
+    """Access the documentation of the Bugzilla Quicksearch syntax. Use this to learn how to construct advanced search queries. Response is in Markdown."""
 
     mcp_log.info("[LLM-REQ] quicksearch_syntax_resource()")
-
-    try:
-        # We can use the client to fetch this page too, though it's not a rest API
-        # Using the underlying client for convenience
-        url = f"{bz.base_url}/page.cgi"
-        r = await bz.client.get(
-            url, params={"id": "quicksearch.html"}
-        )  # Use absolute URL since base_url of client is /rest
-
-        if r.status_code != 200:
-            raise ResourceError(
-                f"Failed to fetch bugzilla quicksearch_syntax with status code {r.status_code}"
-            )
-
-        mcp_log.info(f"[LLM-RES] Fetched {len(r.text)} chars of documentation")
-        return r.text
-    except Exception as e:  # noqa: BLE001
-        raise ResourceError(f"Failed to fetch quicksearch documentation: {e}")
+    mcp_log.info(
+        f"[LLM-RES] Returned {len(QUICKSEARCH_SYNTAX_DOC)} chars of documentation"
+    )
+    return QUICKSEARCH_SYNTAX_DOC
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})

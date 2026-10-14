@@ -191,7 +191,7 @@ The server provides the following tools for interacting with Bugzilla:
   - **Example**: `bugs_quicksearch("product:Firefox status:NEW", limit=10, order="bug_id DESC")`
 
 - **`quicksearch_syntax_resource()`**: Returns documentation on Bugzilla's quicksearch syntax.
-  - **Returns**: A string containing HTML documentation.
+  - **Returns**: A string containing Markdown documentation.
 
 - **`summarize_bug_prompt(bug_id: int)`**: Returns a detailed summary prompt for all comments of a given bug ID.
   - **Returns**: A well-structured summary of the bug's comments including usernames (bold italic) and dates (bold).
