@@ -3,7 +3,6 @@
 Moved from mcp_utils.py for better modularity.
 """
 
-import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -123,50 +122,25 @@ class Bugzilla:
         r = await self._request("GET", "/version")
         return _json_or_raise(r)["version"]
 
-    async def bugzilla_info(self) -> dict[str, Any]:
-        """Fetch comprehensive bugzilla server information:
-        it returns url, version, extensions, timezone, time and parameters for the current user in a dictionary
-        """
-        try:
-            # Fetch everything concurrently
-            version_r, extensions_r, time_r, parameters_r = await asyncio.gather(
-                self.client.get("/version"),
-                self.client.get("/extensions"),
-                self.client.get("/time"),
-                self.client.get("/parameters"),
-            )
+    async def server_extensions(self) -> dict[str, Any]:
+        """Fetch bugzilla extensions installed on the server"""
+        r = await self._request("GET", "/extensions")
+        envelope = _json_or_raise(r)
+        return envelope.get("extensions", envelope)
 
-            # Raise for status on all
-            for r in [version_r, extensions_r, time_r, parameters_r]:
-                r.raise_for_status()
+    async def server_time(self) -> dict[str, Any]:
+        """Fetch bugzilla server time and timezone information"""
+        r = await self._request("GET", "/time")
+        return _json_or_raise(r)
 
-            # Combine results
-            version_data = _json_or_raise(version_r)
-            extensions_data = _json_or_raise(extensions_r)
-            time_data = _json_or_raise(time_r)
-            parameters_data = _json_or_raise(parameters_r)
-
-            result = {
-                "url": self.base_url,
-                "version": version_data.get("version"),
-                "extensions": extensions_data.get("extensions", {}),
-                "timezone": time_data.get("tz_name"),
-                "time": time_data.get("web_time"),
-                "parameters": parameters_data.get("parameters", {}),
-            }
-            mcp_log.info(
-                f"[BZ-RES] Retrieved bugzilla server info from {self.base_url}"
-            )
-            return result
-
-        except httpx.HTTPStatusError as e:
-            mcp_log.error(
-                f"[BZ-RES] Failed: {e.response.status_code} {e.response.text}"
-            )
-            raise
-        except httpx.RequestError as e:
-            mcp_log.error(f"[BZ-RES] Network Error: {e}")
-            raise
+    async def server_parameters(self, names: list[str] | None = None) -> dict[str, Any]:
+        """Fetch bugzilla server configuration parameters"""
+        r = await self._request("GET", "/parameters")
+        envelope = _json_or_raise(r)
+        params = envelope.get("parameters", envelope)
+        if names:
+            return {k: v for k, v in params.items() if k in names}
+        return params
 
     async def bug_info(
         self,

@@ -435,13 +435,45 @@ async def quicksearch_syntax_resource(bz: Bugzilla = _get_bz) -> str:
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
-async def bugzilla_server_info(bz: Bugzilla = _get_bz) -> dict[str, Any]:
-    """Returns comprehensive Bugzilla server information (url, version, extensions, timezone, time, parameters)."""
-    mcp_log.info("[LLM-REQ] bugzilla_server_info()")
+async def bugzilla_version(bz: Bugzilla = _get_bz) -> str:
+    """Returns the version of the Bugzilla server."""
+    mcp_log.info("[LLM-REQ] bugzilla_version()")
     try:
-        return await bz.bugzilla_info()
+        return await bz.server_version()
     except Exception as e:  # noqa: BLE001
-        raise ToolError(f"Failed to fetch bugzilla server info\nReason: {e}")
+        raise ToolError(f"Failed to fetch bugzilla version\nReason: {e}")
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
+async def bugzilla_extensions(bz: Bugzilla = _get_bz) -> dict[str, Any]:
+    """Returns the extensions installed on the Bugzilla server."""
+    mcp_log.info("[LLM-REQ] bugzilla_extensions()")
+    try:
+        return await bz.server_extensions()
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(f"Failed to fetch bugzilla extensions\nReason: {e}")
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
+async def bugzilla_time(bz: Bugzilla = _get_bz) -> dict[str, Any]:
+    """Returns the current time and timezone of the Bugzilla server."""
+    mcp_log.info("[LLM-REQ] bugzilla_time()")
+    try:
+        return await bz.server_time()
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(f"Failed to fetch bugzilla time\nReason: {e}")
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
+async def bugzilla_parameters(
+    names: list[str] | None = None, bz: Bugzilla = _get_bz
+) -> dict[str, Any]:
+    """Returns the configuration parameters of the Bugzilla server. Optionally filter by parameter names."""
+    mcp_log.info(f"[LLM-REQ] bugzilla_parameters(names={names})")
+    try:
+        return await bz.server_parameters(names=names)
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(f"Failed to fetch bugzilla parameters\nReason: {e}")
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False}, tags={"read"})

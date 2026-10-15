@@ -24,30 +24,73 @@ async def bz_client():
 
 
 @pytest.mark.asyncio
-async def test_bugzilla_info(bz_client):
+async def test_server_version(bz_client):
     async with respx.mock(base_url=MOCK_URL) as respx_mock:
         respx_mock.get("/rest/version").mock(
             return_value=Response(200, json={"version": "5.0.4"})
         )
+        version = await bz_client.server_version()
+        assert version == "5.0.4"
+
+
+@pytest.mark.asyncio
+async def test_server_extensions(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
         respx_mock.get("/rest/extensions").mock(
             return_value=Response(200, json={"extensions": {"MockExtension": {}}})
         )
+        extensions = await bz_client.server_extensions()
+        assert extensions == {"MockExtension": {}}
+
+
+@pytest.mark.asyncio
+async def test_server_time(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
         respx_mock.get("/rest/time").mock(
             return_value=Response(
                 200, json={"tz_name": "UTC", "web_time": "2026-03-18T10:00:00Z"}
             )
         )
-        respx_mock.get("/rest/parameters").mock(
-            return_value=Response(200, json={"parameters": {"urlbase": "http://mock"}})
-        )
+        time_data = await bz_client.server_time()
+        assert time_data["tz_name"] == "UTC"
+        assert time_data["web_time"] == "2026-03-18T10:00:00Z"
 
-        info = await bz_client.bugzilla_info()
-        assert info["url"] == MOCK_URL.rstrip("/rest")
-        assert info["version"] == "5.0.4"
-        assert "MockExtension" in info["extensions"]
-        assert info["timezone"] == "UTC"
-        assert info["time"] == "2026-03-18T10:00:00Z"
-        assert info["parameters"]["urlbase"] == "http://mock"
+
+@pytest.mark.asyncio
+async def test_server_parameters(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/parameters").mock(
+            return_value=Response(
+                200,
+                json={
+                    "parameters": {
+                        "urlbase": "http://mock",
+                        "maintainer": "admin@example.com",
+                    }
+                },
+            )
+        )
+        params = await bz_client.server_parameters()
+        assert params["urlbase"] == "http://mock"
+        assert params["maintainer"] == "admin@example.com"
+
+
+@pytest.mark.asyncio
+async def test_server_parameters_filtering(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/parameters").mock(
+            return_value=Response(
+                200,
+                json={
+                    "parameters": {
+                        "urlbase": "http://mock",
+                        "maintainer": "admin@example.com",
+                    }
+                },
+            )
+        )
+        params = await bz_client.server_parameters(names=["urlbase"])
+        assert params == {"urlbase": "http://mock"}
 
 
 @pytest.mark.asyncio

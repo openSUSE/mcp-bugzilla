@@ -201,8 +201,19 @@ The server provides the following tools for interacting with Bugzilla:
 - **`bug_url(bug_id: int)`**: Constructs and returns the direct URL to a specific bug on the Bugzilla server.
   - **Returns**: A string representing the bug's URL (e.g., `"https://bugzilla.example.com/show_bug.cgi?id=12345"`)
 
-- **`bugzilla_server_info()`**: Returns comprehensive Bugzilla server information.
-  - **Returns**: A dictionary containing `url`, `version`, `extensions`, `timezone`, `time`, and `parameters`.
+- **`bugzilla_version()`**: Returns the version of the Bugzilla server.
+  - **Returns**: A string representing the Bugzilla version (e.g., `"5.0.4"`).
+
+- **`bugzilla_extensions()`**: Returns the extensions installed on the Bugzilla server.
+  - **Returns**: A dictionary containing installed Bugzilla extensions and their metadata.
+
+- **`bugzilla_time()`**: Returns the current time and timezone of the Bugzilla server.
+  - **Returns**: A dictionary containing server time (`db_time`, `web_time`, `web_time_utc`) and timezone details (`tz_name`, `tz_offset`, `tz_short_name`).
+
+- **`bugzilla_parameters(names: list[str] = None)`**: Returns the configuration parameters of the Bugzilla server.
+  - **Parameters**:
+    - `names`: Optional list of parameter names to filter results
+  - **Returns**: A dictionary containing Bugzilla configuration parameters.
 
 - **`mcp_server_info_resource()`**: Returns the configuration arguments being used by the current server instance (version, host, port, etc.).
   - **Returns**: A dictionary containing server configuration.
