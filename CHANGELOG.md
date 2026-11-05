@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [v0.22.0] - 2026-11-05
+
+### Added
+- Sort order parameter (`order`) in `bugs_quicksearch` tool and `Bugzilla.quicksearch` method (defaulting to `"relevance"`). Allows sorting results by `"bug_id DESC"` (newest bugs first), `"changeddate DESC"`, etc., preventing issues where field-only queries sorted by oldest bugs first within the default 50-bug limit.
+- Dedicated tools for Bugzilla server metadata to replace monolithic `bugzilla_server_info`, isolating endpoint failures and reducing token overhead:
+  - `bugzilla_version`: fetches Bugzilla server version.
+  - `bugzilla_extensions`: fetches installed extensions.
+  - `bugzilla_time`: fetches server time and timezone.
+  - `bugzilla_parameters`: fetches server configuration parameters, with optional parameter name filtering (`names`).
+
+### Fixed
+- `quicksearch_syntax_resource` now returns a bundled, concise Markdown reference for Bugzilla Quicksearch syntax directly from the package instead of fetching HTML, preventing failures on bot-protected instances (e.g., Anubis challenge) and saving context tokens.
+
+### Changed
+- Replaced composite `Bugzilla.bugzilla_info` client method with dedicated endpoint methods (`server_version`, `server_extensions`, `server_time`, `server_parameters`).
+
+### Chore
+- Bump `fastmcp` from 4.0.3 to 4.1.4.
+- Bump `pytest` from 9.1.1 to 9.2.0 and `pytest-asyncio` from 1.4.0 to 1.4.1.
+- Update `uv-build` dependency requirement.
+
 ## [v0.21.0] - 2026-09-15
 
 ### Fixed
