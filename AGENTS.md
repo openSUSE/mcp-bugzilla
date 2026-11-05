@@ -51,7 +51,7 @@ uv run ruff format --check # format
 ## Commit style
 
 - Use atomic commits & follow [conventional commits spec](https://raw.githubusercontent.com/conventional-commits/conventionalcommits.org/refs/heads/master/content/v1.0.0/index.md)
-## Publishing a New Release
+## New Release Checklist
 
 ### For Humans
 
@@ -59,7 +59,7 @@ uv run ruff format --check # format
 2. Bump project version with `uv version --bump` (e.g., `--bump minor`)
 3. Create a new branch for the release
 4. Add entry to `CHANGELOG.md` using `git diff` since the previous tag
-5. Open a PR and merge
+5. Open a PR
 
 ### For AI Agents
 
