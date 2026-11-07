@@ -357,7 +357,32 @@ async def test_update_bug_flag_set_by_name():
         123,
         {
             "flags": [
-                {"status": "?", "name": "needinfo", "requestee": "dev@example.com"}
+                {
+                    "status": "?",
+                    "name": "needinfo",
+                    "requestee": "dev@example.com",
+                    "new": True,
+                }
+            ]
+        },
+        "",
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_bug_flag_grant_by_name():
+    bz = AsyncMock()
+    bz.update_bug = AsyncMock(return_value={"bugs": [{"id": 123}]})
+    await server.update_bug_flag(bug_id=123, status="+", name="blocker", bz=bz)
+    bz.update_bug.assert_awaited_once_with(
+        123,
+        {
+            "flags": [
+                {
+                    "status": "+",
+                    "name": "blocker",
+                    "new": True,
+                }
             ]
         },
         "",
