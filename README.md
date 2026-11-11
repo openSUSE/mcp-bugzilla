@@ -341,6 +341,7 @@ The `mcp-bugzilla` command supports the following options:
 | `--bugzilla-api-key <KEY>` | `BUGZILLA_API_KEY` | *none* | Static Bugzilla API key. Optional: if omitted and not provided per-request via `--mcp-auth-header` (http), access is **anonymous**. For `--transport stdio` this is the only source of the key |
 | `--bugzilla-auth-mode {query,bearer}` | `BUGZILLA_AUTH_MODE` | `query` | How to authenticate with Bugzilla: `query` sends `?api_key=<KEY>` (default, works with most instances); `bearer` sends `Authorization: Bearer <KEY>` header (required for Red Hat Bugzilla and similar) |
 | `--read-only` | `MCP_READ_ONLY` | `False` | Disables all tools which can modify a bug. Works well in conjunction with `MCP_BUGZILLA_DISABLED_METHODS` |
+| `--exclude <FIELD=VALUE>` | `BUGZILLA_EXCLUDE` (one rule per line) | *none* | Hide bugs whose `FIELD` matches `VALUE` from every tool, e.g. `summary=EMBARGOED`. Repeat the option to narrow the match: a bug is hidden only if it matches **all** the rules. See [Excluding bugs](#excluding-bugs) |
 | `--tool-search` | `MCP_TOOL_SEARCH` | `False` | Collapse all tools into `search_tools` + `call_tool` meta-tools using BM25 relevance ranking. The LLM searches for tools by natural language query and calls them directly. Reduces context overhead when many tools are available |
 | `--download-dir <DIR>` | `BUGZILLA_DOWNLOAD_DIR` | `<tmpdir>/mcp-bugzilla` | Directory where `download_attachment` writes binary/oversized attachments. The default directory is created on first use and restricted to the owner (`0o700`); an explicit `output_dir` keeps its own permissions |
 
@@ -716,6 +717,27 @@ mcp-bugzilla --bugzilla-server https://bugzilla.example.com
 ```bash
 export LOG_LEVEL=DEBUG  # For more verbose output
 export LOG_LEVEL=ERROR  # For minimal output
+```
+
+## Excluding bugs
+
+`--exclude` removes bugs from every tool's output, e.g. SUSE's embargoed bugs:
+
+```bash
+mcp-bugzilla --exclude 'summary=EMBARGOED' --exclude 'product=SUSE Security Incidents'
+```
+
+- A rule is a single `FIELD=VALUE` using the criteria of the Bugzilla REST [Search Bugs](https://bugzilla.readthedocs.io/en/latest/api/core/v1/bug.html#search-bugs). Allowed fields: `alias`, `assigned_to`, `component`, `creator`, `op_sys`, `platform`, `priority`, `product`, `qa_contact`, `resolution`, `severity`, `status`, `summary`, `tags`, `target_milestone`, `url`, `version`, `whiteboard`. Malformed rules and unknown fields are rejected at startup.
+- Bugzilla ANDs all criteria, so with several rules a bug is hidden only if it matches **all** of them; there is no "any of".
+- `summary` and `whiteboard` are substring matches, the other fields exact matches; case sensitivity depends on the database.
+- Matching runs on Bugzilla and only the IDs of excluded bugs are fetched (one small extra request per call). Search results and attachments are fetched and then dropped inside the server before returning, so search pages may be shorter than `limit`.
+- Fields that REST search does not support (`groups`, `cc`, `keywords`, `flags`) cannot be used.
+- Check a rule by hand (it should return only the bugs to hide):
+
+```bash
+curl -sG "$BUGZILLA_SERVER/rest/bug" -H "Authorization: Bearer $BUGZILLA_API_KEY" \
+  --data-urlencode "id=1234,5678" --data-urlencode "include_fields=id,summary" \
+  --data-urlencode "summary=EMBARGOED" --data-urlencode "product=Foo"
 ```
 
 ## License

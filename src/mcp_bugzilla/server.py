@@ -100,6 +100,7 @@ async def get_bz(headers: dict = _current_headers) -> Bugzilla:
         url=base_url,
         api_key=api_key_value,
         use_auth_header=use_bearer,
+        exclude=getattr(cli_args, "exclude", None),
     )
     try:
         yield bz
@@ -146,7 +147,7 @@ async def bug_info(
 
     try:
         result = await bz.bug_info(
-            bug_ids, include_fields=include_fields, exclude_fields=exclude_fields
+            set(bug_ids), include_fields=include_fields, exclude_fields=exclude_fields
         )
         return result
 
