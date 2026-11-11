@@ -127,8 +127,12 @@ def main():
 
     try:
         # CLI rules take precedence over the environment (one rule per line)
-        rules = args.exclude or os.getenv("BUGZILLA_EXCLUDE", "").splitlines()
-        args.exclude = [parse_exclude_rule(r.strip()) for r in rules if r.strip()]
+        rules = args.exclude
+        if rules is None:
+            rules = [
+                r for r in os.getenv("BUGZILLA_EXCLUDE", "").splitlines() if r.strip()
+            ]
+        args.exclude = [parse_exclude_rule(r.strip()) for r in rules]
     except ValueError as e:
         mcp_log.critical(f"Error: {e}. Exiting.")
         sys.exit(1)
