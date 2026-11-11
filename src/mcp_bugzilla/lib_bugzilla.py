@@ -128,19 +128,38 @@ class Bugzilla:
     async def _find_excluded_ids(self, ids: set[int]) -> set[int]:
         """IDs among ``ids`` matching all exclude rules.
 
-        A single REST search (``id`` plus every ``FIELD=VALUE``, ANDed by
-        Bugzilla) requesting only ``id``: matching happens on Bugzilla and
-        nothing but the IDs of excluded bugs is ever received.
+        REST searches (``id`` plus every ``FIELD=VALUE``, ANDed by Bugzilla)
+        requesting only ``id``: matching happens on Bugzilla and nothing but the
+        IDs of excluded bugs is ever received. Bugzilla caps the results of a
+        search (default/maximum limits), so pages are read until an empty one;
+        a page that does not advance means completeness cannot be established
+        and the lookup fails closed.
         """
         if not self.exclude_rules or not ids:
             return set()
-        params = [
-            ("id", ",".join(str(i) for i in ids)),
-            ("include_fields", "id"),
-            *self.exclude_rules,
-        ]
-        r = await self._request("GET", "/bug", params=params)
-        excluded = {b["id"] for b in _json_or_raise(r)["bugs"]}
+        excluded: set[int] = set()
+        while True:
+            params = [
+                ("id", ",".join(str(i) for i in ids)),
+                ("include_fields", "id"),
+                ("order", "bug_id"),
+                ("limit", 100),
+                ("offset", len(excluded)),
+                *self.exclude_rules,
+            ]
+            r = await self._request("GET", "/bug", params=params)
+            page = {b["id"] for b in _json_or_raise(r)["bugs"]}
+            if not page:
+                break
+            if page & excluded or not page <= ids:
+                raise BugzillaAPIError(
+                    502,
+                    {
+                        "code": 0,
+                        "message": "Cannot establish the complete list of excluded bugs",
+                    },
+                )
+            excluded |= page
         if excluded:
             mcp_log.info(f"[BZ-FILTER] Excluded bugs: {sorted(excluded)}")
         return excluded
@@ -342,12 +361,10 @@ class Bugzilla:
         r = await self._request("GET", "/bug", params=params)
 
         envelope = _json_or_raise(r)
-        excluded = await self._find_excluded_ids(
-            {b["id"] for b in envelope.get("bugs", [])}
-        )
-        if excluded:
-            envelope["bugs"] = [b for b in envelope["bugs"] if b["id"] not in excluded]
         bugs = envelope.get("bugs", [])
+        if self.exclude_rules:
+            excluded = await self._find_excluded_ids({b["id"] for b in bugs})
+            bugs = envelope["bugs"] = [b for b in bugs if b["id"] not in excluded]
         mcp_log.info(f"[BZ-RES] Found {len(bugs)} bugs")
         return envelope
 

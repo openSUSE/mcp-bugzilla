@@ -969,6 +969,7 @@ async def test_exclude_rules():
                     # server-side lookup: a single request carrying every rule
                     seen.append((q["summary"], q["product"]))
                     hit = [{"id": 2}] if "2" in q["id"].split(",") else []
+                    hit = hit if q["offset"] == "0" else []
                     return Response(200, json={"bugs": hit})
                 return Response(200, json={"bugs": [{"id": 1}, {"id": 2}, {"id": 3}]})
 
@@ -979,7 +980,9 @@ async def test_exclude_rules():
 
             res = await bz.quicksearch("x", "summary", 50, 0)
             assert [b["id"] for b in res["bugs"]] == [1, 3]
-            assert seen == [("EMBARGOED", "Sec Inc")]
+            assert set(seen) == {
+                ("EMBARGOED", "Sec Inc")
+            }  # every request has all rules
 
             respx_mock.get("/rest/bug/1").mock(
                 return_value=Response(200, json={"bugs": [{"id": 1}]})
@@ -1007,6 +1010,43 @@ async def test_exclude_rules():
             assert put.called
     finally:
         await bz.close()
+
+
+@pytest.mark.asyncio
+async def test_exclude_lookup_is_exhaustive_and_fails_closed():
+    bz = Bugzilla(MOCK_URL, exclude=[parse_exclude_rule("summary=EMBARGOED")])
+    try:
+        async with respx.mock(base_url=MOCK_URL) as respx_mock:
+            matching = list(range(1, 8))  # server returns at most 3 per page
+
+            def paged(request):
+                q = request.url.params
+                assert q["limit"] and q["offset"] and q["include_fields"] == "id"
+                off = int(q["offset"])
+                return Response(
+                    200, json={"bugs": [{"id": i} for i in matching[off : off + 3]]}
+                )
+
+            route = respx_mock.get("/rest/bug").mock(side_effect=paged)
+            assert await bz._find_excluded_ids(set(range(1, 10))) == set(matching)
+            assert route.call_count == 4  # pages of 3, 3, 1, then empty
+
+            # a server ignoring offset never advances: fail closed
+            route.mock(side_effect=lambda r: Response(200, json={"bugs": [{"id": 1}]}))
+            with pytest.raises(BugzillaAPIError):
+                await bz._find_excluded_ids({1, 2})
+    finally:
+        await bz.close()
+
+
+@pytest.mark.asyncio
+async def test_quicksearch_without_exclusions_does_not_require_id(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/bug").mock(
+            return_value=Response(200, json={"bugs": [{"summary": "no id"}]})
+        )
+        res = await bz_client.quicksearch("x", "summary", 50, 0)
+        assert res["bugs"] == [{"summary": "no id"}]
 
 
 def test_no_exclude_rules_by_default():
