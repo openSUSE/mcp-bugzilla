@@ -341,7 +341,7 @@ The `mcp-bugzilla` command supports the following options:
 | `--bugzilla-api-key <KEY>` | `BUGZILLA_API_KEY` | *none* | Static Bugzilla API key. Optional: if omitted and not provided per-request via `--mcp-auth-header` (http), access is **anonymous**. For `--transport stdio` this is the only source of the key |
 | `--bugzilla-auth-mode {query,bearer}` | `BUGZILLA_AUTH_MODE` | `query` | How to authenticate with Bugzilla: `query` sends `?api_key=<KEY>` (default, works with most instances); `bearer` sends `Authorization: Bearer <KEY>` header (required for Red Hat Bugzilla and similar) |
 | `--read-only` | `MCP_READ_ONLY` | `False` | Disables all tools which can modify a bug. Works well in conjunction with `MCP_BUGZILLA_DISABLED_METHODS` |
-| `--exclude <FIELD=VALUE>` | `BUGZILLA_EXCLUDE` (one rule per line) | *none* | Hide bugs whose `FIELD` matches `VALUE` from every tool, e.g. `summary=EMBARGOED`. Repeat the option to narrow the match: a bug is hidden only if it matches **all** the rules. See [Excluding bugs](#excluding-bugs) |
+| `--exclude <FIELD=VALUE>` | `BUGZILLA_EXCLUDE` (one rule per line, used when no `--exclude` is given) | *none* | Hide bugs whose `FIELD` matches `VALUE` from every tool, e.g. `summary=EMBARGOED`. Repeat the option to narrow the match: a bug is hidden only if it matches **all** the rules. See [Excluding bugs](#excluding-bugs) |
 | `--tool-search` | `MCP_TOOL_SEARCH` | `False` | Collapse all tools into `search_tools` + `call_tool` meta-tools using BM25 relevance ranking. The LLM searches for tools by natural language query and calls them directly. Reduces context overhead when many tools are available |
 | `--download-dir <DIR>` | `BUGZILLA_DOWNLOAD_DIR` | `<tmpdir>/mcp-bugzilla` | Directory where `download_attachment` writes binary/oversized attachments. The default directory is created on first use and restricted to the owner (`0o700`); an explicit `output_dir` keeps its own permissions |
 
@@ -727,6 +727,15 @@ export LOG_LEVEL=ERROR  # For minimal output
 mcp-bugzilla --exclude 'summary=EMBARGOED' --exclude 'product=SUSE Security Incidents'
 ```
 
+- The same rules can be set with the `BUGZILLA_EXCLUDE` environment variable: it is a plain list with **one rule per line**, not JSON or comma-separated, so values can contain spaces and commas (e.g. `summary=VUL-0,1: EMBARGOED`). A single rule needs no special quoting. If `--exclude` is given on the command line, `BUGZILLA_EXCLUDE` is ignored.
+
+  ```bash
+  export BUGZILLA_EXCLUDE='summary=EMBARGOED'
+  # several rules (bash/zsh):
+  export BUGZILLA_EXCLUDE=$'summary=EMBARGOED\nproduct=SUSE Security Incidents'
+  ```
+
+  In a container or Kubernetes manifest, use a multi-line value (e.g. a YAML `|` block).
 - A rule is a single `FIELD=VALUE` using the criteria of the Bugzilla REST [Search Bugs](https://bugzilla.readthedocs.io/en/latest/api/core/v1/bug.html#search-bugs). Allowed fields: `alias`, `assigned_to`, `component`, `creator`, `op_sys`, `platform`, `priority`, `product`, `qa_contact`, `resolution`, `severity`, `status`, `summary`, `tags`, `target_milestone`, `url`, `version`, `whiteboard`. Malformed rules and unknown fields are rejected at startup.
 - Bugzilla ANDs all criteria, so with several rules a bug is hidden only if it matches **all** of them; there is no "any of".
 - `summary` and `whiteboard` are substring matches, the other fields exact matches; case sensitivity depends on the database.

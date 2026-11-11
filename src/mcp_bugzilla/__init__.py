@@ -84,14 +84,11 @@ def main():
     parser.add_argument(
         "--exclude",
         action="append",
-        default=[
-            r for r in os.getenv("BUGZILLA_EXCLUDE", "").splitlines() if r.strip()
-        ],
         metavar="FIELD=VALUE",
         help="Hide bugs whose FIELD matches VALUE from every tool, e.g. 'summary=EMBARGOED'; "
         "matching runs on the Bugzilla server. Repeat the option to narrow the match: a bug is "
-        "hidden only if it matches ALL the rules. Environment variable BUGZILLA_EXCLUDE holds "
-        "one rule per line.",
+        "hidden only if it matches ALL the rules. If the option is not given, the rules are read "
+        "from the BUGZILLA_EXCLUDE environment variable, one rule per line.",
     )
 
     parser.add_argument(
@@ -129,7 +126,9 @@ def main():
         sys.exit(1)
 
     try:
-        args.exclude = [parse_exclude_rule(rule) for rule in args.exclude]
+        # CLI rules take precedence over the environment (one rule per line)
+        rules = args.exclude or os.getenv("BUGZILLA_EXCLUDE", "").splitlines()
+        args.exclude = [parse_exclude_rule(r.strip()) for r in rules if r.strip()]
     except ValueError as e:
         mcp_log.critical(f"Error: {e}. Exiting.")
         sys.exit(1)
