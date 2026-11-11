@@ -735,7 +735,6 @@ mcp-bugzilla --exclude 'summary=EMBARGOED' --exclude 'product=SUSE Security Inci
   export BUGZILLA_EXCLUDE=$'summary=EMBARGOED\nproduct=SUSE Security Incidents'
   ```
 
-  In a container or Kubernetes manifest, use a multi-line value (e.g. a YAML `|` block).
 - A rule is a single `FIELD=VALUE` using the criteria of the Bugzilla REST [Search Bugs](https://bugzilla.readthedocs.io/en/latest/api/core/v1/bug.html#search-bugs). Allowed fields: `alias`, `assigned_to`, `component`, `creator`, `op_sys`, `platform`, `priority`, `product`, `qa_contact`, `resolution`, `severity`, `status`, `summary`, `tags`, `target_milestone`, `url`, `version`, `whiteboard`. Malformed rules and unknown fields are rejected at startup.
 - Bugzilla ANDs all criteria, so with several rules a bug is hidden only if it matches **all** of them; there is no "any of".
 - `summary` and `whiteboard` are substring matches, the other fields exact matches; case sensitivity depends on the database.
