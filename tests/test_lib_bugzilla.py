@@ -969,7 +969,6 @@ async def test_exclude_rules():
                     # server-side lookup: a single request carrying every rule
                     seen.append((q["summary"], q["product"]))
                     hit = [{"id": 2}] if "2" in q["id"].split(",") else []
-                    hit = hit if q["offset"] == "0" else []
                     return Response(200, json={"bugs": hit})
                 return Response(200, json={"bugs": [{"id": 1}, {"id": 2}, {"id": 3}]})
 
@@ -1021,17 +1020,16 @@ async def test_exclude_lookup_is_exhaustive_and_fails_closed():
 
             def paged(request):
                 q = request.url.params
-                assert q["limit"] and q["offset"] and q["include_fields"] == "id"
-                off = int(q["offset"])
-                return Response(
-                    200, json={"bugs": [{"id": i} for i in matching[off : off + 3]]}
-                )
+                assert q["limit"] and q["include_fields"] == "id"
+                asked = {int(i) for i in q["id"].split(",")}
+                hits = [i for i in matching if i in asked]
+                return Response(200, json={"bugs": [{"id": i} for i in hits[:3]]})
 
             route = respx_mock.get("/rest/bug").mock(side_effect=paged)
             assert await bz._find_excluded_ids(set(range(1, 10))) == set(matching)
-            assert route.call_count == 4  # pages of 3, 3, 1, then empty
+            assert route.call_count == 4  # pages of 3, 3, 1, then an empty one
 
-            # a server ignoring offset never advances: fail closed
+            # a server repeating known ids never advances: fail closed
             route.mock(side_effect=lambda r: Response(200, json={"bugs": [{"id": 1}]}))
             with pytest.raises(BugzillaAPIError):
                 await bz._find_excluded_ids({1, 2})

@@ -131,9 +131,10 @@ class Bugzilla:
         REST searches (``id`` plus every ``FIELD=VALUE``, ANDed by Bugzilla)
         requesting only ``id``: matching happens on Bugzilla and nothing but the
         IDs of excluded bugs is ever received. Bugzilla caps the results of a
-        search (default/maximum limits), so pages are read until an empty one;
-        a page that does not advance means completeness cannot be established
-        and the lookup fails closed.
+        search (default/maximum limits), so each request only asks for the IDs
+        not found yet and the search repeats until nothing more matches. A page
+        repeating known IDs or returning unrequested ones means completeness
+        cannot be established and the lookup fails closed.
         """
         if not self.exclude_rules or not ids:
             return set()
@@ -142,9 +143,7 @@ class Bugzilla:
             params = [
                 ("id", ",".join(str(i) for i in remaining)),
                 ("include_fields", "id"),
-                ("order", "bug_id"),
                 ("limit", 100),
-                ("offset", 0),
                 *self.exclude_rules,
             ]
             r = await self._request("GET", "/bug", params=params)
