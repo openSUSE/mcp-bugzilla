@@ -138,13 +138,13 @@ class Bugzilla:
         if not self.exclude_rules or not ids:
             return set()
         excluded: set[int] = set()
-        while True:
+        while remaining := ids - excluded:
             params = [
-                ("id", ",".join(str(i) for i in ids)),
+                ("id", ",".join(str(i) for i in remaining)),
                 ("include_fields", "id"),
                 ("order", "bug_id"),
                 ("limit", 100),
-                ("offset", len(excluded)),
+                ("offset", 0),
                 *self.exclude_rules,
             ]
             r = await self._request("GET", "/bug", params=params)
