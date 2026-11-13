@@ -5,7 +5,7 @@ import os
 import sys
 
 from . import server
-from .mcp_utils import mcp_log
+from .mcp_utils import mcp_log, parse_exclude_rule
 
 
 def main():
@@ -82,6 +82,16 @@ def main():
     )
 
     parser.add_argument(
+        "--exclude",
+        action="append",
+        metavar="FIELD=VALUE",
+        help="Hide bugs whose FIELD matches VALUE from every tool, e.g. 'summary=EMBARGOED'; "
+        "matching runs on the Bugzilla server. Repeat the option to narrow the match: a bug is "
+        "hidden only if it matches ALL the rules. If the option is not given, the rules are read "
+        "from the BUGZILLA_EXCLUDE environment variable, one rule per line.",
+    )
+
+    parser.add_argument(
         "--tool-search",
         action="store_true",
         default=os.getenv("MCP_TOOL_SEARCH", "false").lower() == "true",
@@ -114,6 +124,20 @@ def main():
             "Error: --bugzilla-server argument or BUGZILLA_SERVER environment variable must be set. Exiting."
         )
         sys.exit(1)
+
+    try:
+        # CLI rules take precedence over the environment (one rule per line)
+        rules = args.exclude
+        if rules is None:
+            rules = [
+                r for r in os.getenv("BUGZILLA_EXCLUDE", "").splitlines() if r.strip()
+            ]
+        args.exclude = [parse_exclude_rule(r.strip()) for r in rules]
+    except ValueError as e:
+        mcp_log.critical(f"Error: {e}. Exiting.")
+        sys.exit(1)
+    if args.exclude:
+        mcp_log.info(f"Excluding bugs matching all of: {args.exclude}")
 
     if args.bugzilla_auth_mode not in ["query", "bearer"]:
         mcp_log.critical(

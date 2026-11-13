@@ -69,7 +69,15 @@ def _bugzilla_error_body(response: httpx.Response) -> dict[str, Any] | None:
 class Bugzilla:
     """Async Bugzilla API client"""
 
-    def __init__(self, url: str, api_key: str = "", use_auth_header: bool = False):
+    def __init__(
+        self,
+        url: str,
+        api_key: str = "",
+        use_auth_header: bool = False,
+        exclude: list[tuple[str, str]] | None = None,
+    ):
+        # Pre-parsed (field, value) rules; a bug matching all of them is excluded.
+        self.exclude_rules = exclude or []
         self.base_url = url.rstrip("/")
         self.api_url = f"{self.base_url}/rest"
         self.api_key = api_key
@@ -117,6 +125,54 @@ class Bugzilla:
     async def close(self):
         await self.client.aclose()
 
+    async def _find_excluded_ids(self, ids: set[int]) -> set[int]:
+        """IDs among ``ids`` matching all exclude rules.
+
+        REST searches (``id`` plus every ``FIELD=VALUE``, ANDed by Bugzilla)
+        requesting only ``id``: matching happens on Bugzilla and nothing but the
+        IDs of excluded bugs is ever received. Bugzilla caps the results of a
+        search (default/maximum limits), so each request only asks for the IDs
+        not found yet and the search repeats until nothing more matches. A page
+        repeating known IDs or returning unrequested ones means completeness
+        cannot be established and the lookup fails closed.
+        """
+        if not self.exclude_rules or not ids:
+            return set()
+        excluded: set[int] = set()
+        while remaining := ids - excluded:
+            params = [
+                ("id", ",".join(str(i) for i in remaining)),
+                ("include_fields", "id"),
+                ("limit", 100),
+                *self.exclude_rules,
+            ]
+            r = await self._request("GET", "/bug", params=params)
+            page = {b["id"] for b in _json_or_raise(r)["bugs"]}
+            if not page:
+                break
+            if page & excluded or not page <= ids:
+                raise BugzillaAPIError(
+                    502,
+                    {
+                        "code": 0,
+                        "message": "Cannot establish the complete list of excluded bugs",
+                    },
+                )
+            excluded |= page
+        if excluded:
+            mcp_log.info(f"[BZ-FILTER] Excluded bugs: {sorted(excluded)}")
+        return excluded
+
+    async def _raise_if_excluded(self, *bug_ids: int) -> None:
+        if excluded := await self._find_excluded_ids(set(bug_ids)):
+            raise BugzillaAPIError(
+                403,
+                {
+                    "code": 101,
+                    "message": f"Bug(s) {sorted(excluded)} excluded by the server-side filter",
+                },
+            )
+
     async def server_version(self) -> str:
         """Fetch bugzilla server version"""
         r = await self._request("GET", "/version")
@@ -149,6 +205,11 @@ class Bugzilla:
         exclude_fields: str | None = None,
     ) -> dict[str, Any]:
         """Get information about a given bug or list of bugs"""
+
+        # Excluded bugs are silently omitted, whether one or many ids were asked for
+        ids = ids - await self._find_excluded_ids(ids)
+        if not ids:
+            return {"bugs": []}
 
         if len(ids) == 1:
             url = f"/bug/{next(iter(ids))}"
@@ -201,6 +262,7 @@ class Bugzilla:
         The default bug view omits flags on some instances (e.g. Red Hat
         Bugzilla), so we request them explicitly via include_fields.
         """
+        await self._raise_if_excluded(bug_id)
         url = f"/bug/{bug_id}"
         params = {"include_fields": "id,flags"}
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} params={params}")
@@ -216,6 +278,7 @@ class Bugzilla:
         self, bug_id: int, new_since: datetime | None = None
     ) -> list[dict[str, Any]]:
         """Get history of a bug"""
+        await self._raise_if_excluded(bug_id)
         url = f"/bug/{bug_id}/history"
         params = {}
         if new_since:
@@ -235,6 +298,7 @@ class Bugzilla:
         self, bug_id: int, new_since: datetime | None = None
     ) -> list[dict[str, Any]]:
         """Get comments of a bug"""
+        await self._raise_if_excluded(bug_id)
         url = f"/bug/{bug_id}/comment"
         params = {}
         if new_since:
@@ -256,6 +320,7 @@ class Bugzilla:
         self, bug_id: int, comment: str, is_private: bool
     ) -> dict[str, int]:
         """Add a comment to bug, which can optionally be private"""
+        await self._raise_if_excluded(bug_id)
         payload = {"comment": comment, "is_private": is_private}
         url = f"/bug/{bug_id}/comment"
         mcp_log.info(f"[BZ-REQ] POST {self.api_url}{url} json={payload}")
@@ -278,6 +343,10 @@ class Bugzilla:
         """Perform a quicksearch"""
         # Quicksearch isn't a direct REST endpoint usually, but /bug with quicksearch param works
 
+        if self.exclude_rules and not {"id", "_default", "_all"} & {
+            f.strip() for f in include_fields.split(",")
+        }:
+            include_fields += ",id"  # needed to identify excluded bugs
         params = {
             "quicksearch": query,
             "include_fields": include_fields,
@@ -292,6 +361,9 @@ class Bugzilla:
 
         envelope = _json_or_raise(r)
         bugs = envelope.get("bugs", [])
+        if self.exclude_rules:
+            excluded = await self._find_excluded_ids({b["id"] for b in bugs})
+            bugs = envelope["bugs"] = [b for b in bugs if b["id"] not in excluded]
         mcp_log.info(f"[BZ-RES] Found {len(bugs)} bugs")
         return envelope
 
@@ -299,6 +371,11 @@ class Bugzilla:
         self, bug_id: int, updates: dict[str, Any], comment: str = ""
     ) -> dict[str, Any]:
         """Update bug fields. Optionally add a comment with the update."""
+        # Bugs referenced by the update (duplicate/dependencies) must not be excluded either
+        referenced = {updates.get("dupe_of")}
+        for field in ("blocks", "depends_on"):
+            referenced.update(i for ids in updates.get(field, {}).values() for i in ids)
+        await self._raise_if_excluded(bug_id, *referenced - {None})
         payload = updates.copy()
         if comment:
             payload["comment"] = {"body": comment}
@@ -334,6 +411,7 @@ class Bugzilla:
         self, bug_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
         """Attach a file to a bug. ``payload['data']`` is base64-encoded."""
+        await self._raise_if_excluded(bug_id)
         url = f"/bug/{bug_id}/attachment"
         # Don't log the (possibly large / binary) base64 blob.
         mcp_log.info(
@@ -349,6 +427,7 @@ class Bugzilla:
 
     async def list_attachments(self, bug_id: int) -> list[dict[str, Any]]:
         """List a bug's attachments (metadata only, base64 ``data`` excluded)."""
+        await self._raise_if_excluded(bug_id)
         url = f"/bug/{bug_id}/attachment"
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}{url} exclude_fields=data")
 
@@ -371,6 +450,8 @@ class Bugzilla:
         attachment = _json_or_raise(r).get("attachments", {}).get(str(attachment_id))
         if attachment is None:
             raise ValueError(f"Attachment {attachment_id} not found")
+        if self.exclude_rules:
+            await self._raise_if_excluded(attachment["bug_id"])
         mcp_log.info(
             f"[BZ-RES] Attachment {attachment_id} "
             f"file_name={attachment.get('file_name')!r} size={attachment.get('size')}"

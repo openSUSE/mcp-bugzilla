@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- `--exclude FIELD=VALUE` / `BUGZILLA_EXCLUDE` hides bugs from all tools, e.g. `--exclude summary=EMBARGOED`. FIELD is any searchable bug field of the REST API; repeat the option to narrow the match (a bug is hidden only if it matches all rules). Matching is evaluated by Bugzilla itself, so excluded bug content never reaches the MCP client.
+
 ## [v0.22.0] - 2026-11-05
 
 ### Added

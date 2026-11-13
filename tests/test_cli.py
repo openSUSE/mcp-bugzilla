@@ -39,6 +39,7 @@ def _run_main(monkeypatch, argv, env=None):
         "MCP_AUTH_HEADER",
         "MCP_API_KEY_HEADER",
         "BUGZILLA_AUTH_MODE",
+        "BUGZILLA_EXCLUDE",
     ):
         monkeypatch.delenv(var, raising=False)
     for k, v in (env or {}).items():
@@ -297,3 +298,43 @@ def test_tool_search_env_var_false_no_effect(monkeypatch):
         env={"MCP_TOOL_SEARCH": "false"},
     )
     assert server.cli_args.tool_search is False
+
+
+_SERVER = ["--bugzilla-server", "https://bugzilla.example.com"]
+
+
+def test_exclude_from_env_one_rule_per_line(monkeypatch):
+    from mcp_bugzilla import server
+
+    _run_main(
+        monkeypatch,
+        _SERVER,
+        env={"BUGZILLA_EXCLUDE": "summary=VUL-0,1: EMBARGOED\n\n product=Sec Inc \n"},
+    )
+    assert server.cli_args.exclude == [
+        ("summary", "VUL-0,1: EMBARGOED"),
+        ("product", "Sec Inc"),
+    ]
+
+
+def test_exclude_cli_overrides_env(monkeypatch):
+    from mcp_bugzilla import server
+
+    _run_main(
+        monkeypatch,
+        [*_SERVER, "--exclude", "status=NEW"],
+        env={"BUGZILLA_EXCLUDE": "summary=EMBARGOED"},
+    )
+    assert server.cli_args.exclude == [("status", "NEW")]
+
+
+def test_exclude_unset_is_empty(monkeypatch):
+    from mcp_bugzilla import server
+
+    _run_main(monkeypatch, _SERVER)
+    assert server.cli_args.exclude == []
+
+
+def test_exclude_invalid_rule_exits(monkeypatch):
+    with pytest.raises(SystemExit):
+        _run_main(monkeypatch, _SERVER, env={"BUGZILLA_EXCLUDE": "sumary=x"})

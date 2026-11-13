@@ -154,3 +154,47 @@ def filter_by_flag(
 ) -> list[dict[str, Any]]:
     """Keep items where the boolean value of the specified field matches required_value."""
     return [item for item in items if bool(item.get(field)) is required_value]
+
+
+# Bug fields accepted by the REST search (Search Bugs) usable as exclusion
+# criteria. Left out: id/limit/offset/quicksearch/include_fields (they control the
+# search itself) and creation_time/last_change_time ("this time or later").
+EXCLUDABLE_FIELDS = frozenset(
+    {
+        "alias",
+        "assigned_to",
+        "component",
+        "creator",
+        "op_sys",
+        "platform",
+        "priority",
+        "product",
+        "qa_contact",
+        "resolution",
+        "severity",
+        "status",
+        "summary",
+        "tags",
+        "target_milestone",
+        "url",
+        "version",
+        "whiteboard",
+    }
+)
+
+
+def parse_exclude_rule(rule: str) -> tuple[str, str]:
+    """Parse an exclusion rule ``FIELD=VALUE`` into ``(field, value)``.
+
+    Unknown fields are rejected because Bugzilla would silently ignore them and
+    the rule would then match every bug. A rule must be a single clause.
+    """
+    field, sep, value = rule.partition("=")
+    if not sep or not value or "&" in rule:
+        raise ValueError(f"Invalid exclude rule {rule!r}: expected FIELD=VALUE")
+    if field not in EXCLUDABLE_FIELDS:
+        raise ValueError(
+            f"Invalid exclude rule {rule!r}: unknown field {field!r}. "
+            f"Allowed: {', '.join(sorted(EXCLUDABLE_FIELDS))}"
+        )
+    return field, value

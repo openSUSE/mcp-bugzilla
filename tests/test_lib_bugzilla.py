@@ -10,7 +10,7 @@ from mcp_bugzilla.lib_bugzilla import (
     BugzillaAPIError,
     BugzillaResponseError,
 )
-from mcp_bugzilla.mcp_utils import is_textual, safe_filename
+from mcp_bugzilla.mcp_utils import is_textual, parse_exclude_rule, safe_filename
 
 MOCK_URL = "https://bugzilla.example.com"
 MOCK_API_KEY = "secret_key"
@@ -947,3 +947,113 @@ async def test_get_product_error_body_surfaced(bz_client):
 
         assert exc.value.code == 51
         assert "No product named" in exc.value.message
+
+
+@pytest.mark.asyncio
+async def test_exclude_rules():
+    bz = Bugzilla(
+        MOCK_URL,
+        MOCK_API_KEY,
+        exclude=[
+            parse_exclude_rule("summary=EMBARGOED"),
+            parse_exclude_rule("product=Sec Inc"),
+        ],
+    )
+    seen = []
+    try:
+        async with respx.mock(base_url=MOCK_URL, assert_all_called=False) as respx_mock:
+
+            def handler(request):
+                q = request.url.params
+                if q.get("include_fields") == "id":
+                    # server-side lookup: a single request carrying every rule
+                    seen.append((q["summary"], q["product"]))
+                    hit = [{"id": 2}] if "2" in q["id"].split(",") else []
+                    return Response(200, json={"bugs": hit})
+                return Response(200, json={"bugs": [{"id": 1}, {"id": 2}, {"id": 3}]})
+
+            respx_mock.get("/rest/bug").mock(side_effect=handler)
+            comments = respx_mock.get("/rest/bug/2/comment").mock(
+                return_value=Response(200, json={"bugs": {}})
+            )
+
+            res = await bz.quicksearch("x", "summary", 50, 0)
+            assert [b["id"] for b in res["bugs"]] == [1, 3]
+            assert set(seen) == {
+                ("EMBARGOED", "Sec Inc")
+            }  # every request has all rules
+
+            respx_mock.get("/rest/bug/1").mock(
+                return_value=Response(200, json={"bugs": [{"id": 1}]})
+            )
+            res = await bz.bug_info({1, 2})
+            assert [b["id"] for b in res["bugs"]] == [1]
+
+            assert await bz.bug_info({2}) == {"bugs": []}
+            with pytest.raises(BugzillaAPIError):
+                await bz.bug_comments(2)
+            assert not comments.called
+
+            put = respx_mock.put("/rest/bug/1").mock(
+                return_value=Response(200, json={"bugs": []})
+            )
+            for updates in (
+                {"dupe_of": 2},
+                {"depends_on": {"add": [3, 2]}},
+                {"blocks": {"remove": [2]}},
+            ):
+                with pytest.raises(BugzillaAPIError):
+                    await bz.update_bug(1, updates)
+            assert not put.called
+            await bz.update_bug(1, {"dupe_of": 3, "depends_on": {"add": [3]}})
+            assert put.called
+    finally:
+        await bz.close()
+
+
+@pytest.mark.asyncio
+async def test_exclude_lookup_is_exhaustive_and_fails_closed():
+    bz = Bugzilla(MOCK_URL, exclude=[parse_exclude_rule("summary=EMBARGOED")])
+    try:
+        async with respx.mock(base_url=MOCK_URL) as respx_mock:
+            matching = list(range(1, 8))  # server returns at most 3 per page
+
+            def paged(request):
+                q = request.url.params
+                assert q["limit"] and q["include_fields"] == "id"
+                asked = {int(i) for i in q["id"].split(",")}
+                hits = [i for i in matching if i in asked]
+                return Response(200, json={"bugs": [{"id": i} for i in hits[:3]]})
+
+            route = respx_mock.get("/rest/bug").mock(side_effect=paged)
+            assert await bz._find_excluded_ids(set(range(1, 10))) == set(matching)
+            assert route.call_count == 4  # pages of 3, 3, 1, then an empty one
+
+            # a server repeating known ids never advances: fail closed
+            route.mock(side_effect=lambda r: Response(200, json={"bugs": [{"id": 1}]}))
+            with pytest.raises(BugzillaAPIError):
+                await bz._find_excluded_ids({1, 2})
+    finally:
+        await bz.close()
+
+
+@pytest.mark.asyncio
+async def test_quicksearch_without_exclusions_does_not_require_id(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/bug").mock(
+            return_value=Response(200, json={"bugs": [{"summary": "no id"}]})
+        )
+        res = await bz_client.quicksearch("x", "summary", 50, 0)
+        assert res["bugs"] == [{"summary": "no id"}]
+
+
+def test_no_exclude_rules_by_default():
+    assert Bugzilla(MOCK_URL).exclude_rules == []
+
+
+def test_parse_exclude_rule():
+    assert parse_exclude_rule("summary=EMBARGOED") == ("summary", "EMBARGOED")
+    assert parse_exclude_rule("product=Sec Inc") == ("product", "Sec Inc")
+    for bad in ["", "summary", "summary=", "sumary=x", "id=1", "summary=a&product=b"]:
+        with pytest.raises(ValueError):
+            parse_exclude_rule(bad)
