@@ -1209,6 +1209,8 @@ async def update_bug_flag(
         flag["id"] = flag_id
     else:
         flag["name"] = name
+        if status != "X":
+            flag["new"] = True
         if requestee:
             flag["requestee"] = requestee
 
