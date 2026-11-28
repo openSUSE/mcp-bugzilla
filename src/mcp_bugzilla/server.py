@@ -21,6 +21,7 @@ from fastmcp.exceptions import PromptError, ToolError
 
 from .lib_bugzilla import Bugzilla
 from .mcp_utils import (
+    drop_search_keys,
     filter_by_flag,
     filter_exclude_substrings,
     filter_history_changes,
@@ -28,6 +29,8 @@ from .mcp_utils import (
     filter_limit,
     is_textual,
     mcp_log,
+    override_search_param,
+    parse_search_query,
     safe_filename,
 )
 from .quicksearch_syntax import QUICKSEARCH_SYNTAX_DOC
@@ -418,6 +421,76 @@ async def bugs_quicksearch(
         )
 
         mcp_log.info("[LLM-RES] Returning quicksearch envelope")
+        return envelope
+
+    except Exception as e:  # noqa: BLE001
+        raise ToolError(f"Search failed: {e}")
+
+
+SEARCH_DEFAULT_FIELDS = (
+    "id,product,component,assigned_to,status,resolution,summary,last_change_time"
+)
+SEARCH_DEFAULT_LIMIT = 50
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True}, tags={"read"})
+async def bugs_search(
+    query: str | dict[str, str | int | list[str | int]],
+    include_fields: str | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
+    order: str | None = None,
+    bz: Bugzilla = _get_bz,
+) -> dict[str, Any]:
+    """Search bugs with Bugzilla's advanced search parameters, as used by buglist.cgi.
+
+    Use this when `bugs_quicksearch` can't express the query: boolean charts,
+    operators such as `isempty` or `changedafter`, exact matches on custom fields
+    (`cf_*`), or a search the user copied from the Bugzilla web UI.
+
+    `query` is either:
+    - a query string from a buglist.cgi URL: the full URL or just the part after `?`,
+      e.g. `product=openSUSE&bug_status=NEW&bug_status=CONFIRMED`
+    - a dict of strings, integers or lists of them; a list repeats the key,
+      e.g. `{"product": "openSUSE", "bug_status": ["NEW", "CONFIRMED"]}`
+
+    Boolean charts use Bugzilla's internal field names (`short_desc`, `bug_status`,
+    `creation_ts`, `delta_ts`, `cf_*`...): `fN` is the field, `oN` the operator and
+    `vN` the value, numbered from 1. Charts are ANDed; `j_top=OR` ORs them instead.
+    `fN=OP` ... `fM=CP` brackets the charts in between, `jN=OR` (on the OP chart)
+    ORs them, and `nN=1` negates chart N. Examples:
+    - custom field equals a value: `f1=cf_foo&o1=equals&v1=bar`
+    - summary contains "crash" or "panic":
+      `f1=short_desc&o1=substring&v1=crash&f2=short_desc&o2=substring&v2=panic&j_top=OR`
+    - created in the last 7 days: `f1=creation_ts&o1=greaterthan&v1=-7d`
+
+    `include_fields`, `limit`, `offset` and `order` override the same keys in `query`.
+    Results are capped to `limit` bugs (default: 50); use `offset` for pagination.
+    Without `include_fields`, only a subset of fields is returned; the user can query
+    full details of each bug using the `bug_info` tool. `order` takes column names,
+    e.g. "bug_id DESC" (newest first) or "changeddate DESC" (recently changed first);
+    without it, Bugzilla's default order applies.
+    Credentials (`api_key`, `Bugzilla_login`...) and web-UI-only keys (`columnlist`,
+    `ctype`...) in `query` are ignored.
+    Returns the top-level bug data envelope containing the matched bugs.
+    """
+
+    try:
+        params = parse_search_query(query)
+        params = override_search_param(
+            params, "include_fields", include_fields, SEARCH_DEFAULT_FIELDS
+        )
+        params = override_search_param(params, "limit", limit, SEARCH_DEFAULT_LIMIT)
+        params = override_search_param(params, "offset", offset)
+        params = override_search_param(params, "order", order)
+        # Dropped before logging: a pasted query may carry credentials
+        params, _ = drop_search_keys(params)
+
+        mcp_log.info(f"[LLM-REQ] bugs_search(params={params})")
+
+        envelope = await bz.search(params)
+
+        mcp_log.info("[LLM-RES] Returning search envelope")
         return envelope
 
     except Exception as e:  # noqa: BLE001
