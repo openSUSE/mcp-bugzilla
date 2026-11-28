@@ -10,7 +10,14 @@ from mcp_bugzilla.lib_bugzilla import (
     BugzillaAPIError,
     BugzillaResponseError,
 )
-from mcp_bugzilla.mcp_utils import is_textual, parse_exclude_rule, safe_filename
+from mcp_bugzilla.mcp_utils import (
+    drop_search_keys,
+    is_textual,
+    override_search_param,
+    parse_exclude_rule,
+    parse_search_query,
+    safe_filename,
+)
 
 MOCK_URL = "https://bugzilla.example.com"
 MOCK_API_KEY = "secret_key"
@@ -1057,3 +1064,132 @@ def test_parse_exclude_rule():
     for bad in ["", "summary", "summary=", "sumary=x", "id=1", "summary=a&product=b"]:
         with pytest.raises(ValueError):
             parse_exclude_rule(bad)
+
+
+def test_parse_search_query_keeps_repeated_keys_in_order():
+    assert parse_search_query(
+        "bug_status=NEW&product=openSUSE&bug_status=CONFIRMED"
+    ) == [
+        ("bug_status", "NEW"),
+        ("product", "openSUSE"),
+        ("bug_status", "CONFIRMED"),
+    ]
+
+
+def test_parse_search_query_full_url_and_prefixes():
+    expected = [("f1", "cf_foo"), ("o1", "equals"), ("v1", "a b"), ("j_top", "OR")]
+    query = "f1=cf_foo&o1=equals&v1=a+b&j_top=OR"
+    for text in [
+        f"https://bugzilla.example.com/buglist.cgi?{query}",
+        f"https://bugzilla.example.com/buglist.cgi?{query}#top",
+        f"buglist.cgi?{query}",
+        f"?{query}",
+        f"  {query}\n",
+    ]:
+        assert parse_search_query(text) == expected, text
+
+
+def test_parse_search_query_question_mark_inside_value_is_kept():
+    assert parse_search_query("short_desc=why?&o1=isempty") == [
+        ("short_desc", "why?"),
+        ("o1", "isempty"),
+    ]
+
+
+def test_parse_search_query_keeps_blank_values():
+    assert parse_search_query("f1=cf_foo&o1=isempty&v1=") == [
+        ("f1", "cf_foo"),
+        ("o1", "isempty"),
+        ("v1", ""),
+    ]
+
+
+def test_parse_search_query_empty():
+    for text in ["", "   ", "?", "https://bugzilla.example.com/buglist.cgi?"]:
+        assert parse_search_query(text) == [], text
+    assert parse_search_query({}) == []
+
+
+def test_parse_search_query_dict():
+    assert parse_search_query(
+        {"product": "openSUSE", "bug_status": ["NEW", "CONFIRMED"], "limit": 10}
+    ) == [
+        ("product", "openSUSE"),
+        ("bug_status", "NEW"),
+        ("bug_status", "CONFIRMED"),
+        ("limit", "10"),
+    ]
+
+
+def test_parse_search_query_dict_rejects_unsupported_values():
+    for bad in [
+        {"product": {"name": "x"}},
+        {"product": None},
+        {"is_open": True},
+        {"bug_status": ["NEW", None]},
+        {"bug_status": [["NEW"]]},
+    ]:
+        with pytest.raises(TypeError, match=repr(next(iter(bad)))):
+            parse_search_query(bad)
+
+
+def test_parse_search_query_rejects_other_types():
+    with pytest.raises(TypeError, match="Unsupported query type"):
+        parse_search_query(["product=x"])
+
+
+def test_drop_search_keys():
+    pairs = [
+        ("product", "openSUSE"),
+        ("api_key", "LEAKED"),
+        ("Bugzilla_api_key", "LEAKED"),
+        ("columnlist", "bug_status,short_desc"),
+        ("list_id", "123"),
+        ("bug_status", "NEW"),
+        ("ctype", "csv"),
+        ("bug_status", "CONFIRMED"),
+    ]
+    kept, dropped = drop_search_keys(pairs)
+    assert kept == [
+        ("product", "openSUSE"),
+        ("bug_status", "NEW"),
+        ("bug_status", "CONFIRMED"),
+    ]
+    assert dropped == ["Bugzilla_api_key", "api_key", "columnlist", "ctype", "list_id"]
+
+
+def test_drop_search_keys_is_case_sensitive():
+    # Bugzilla's own parameter names are case-sensitive; API_KEY means nothing to it
+    kept, dropped = drop_search_keys([("API_KEY", "x")])
+    assert kept == [("API_KEY", "x")]
+    assert dropped == []
+
+
+def test_override_search_param_precedence():
+    pairs = [("bug_status", "NEW"), ("limit", "10"), ("bug_status", "CONFIRMED")]
+    rest = [("bug_status", "NEW"), ("bug_status", "CONFIRMED")]
+    # explicit value wins over the query and the default
+    assert override_search_param(pairs, "limit", 5, 50) == [*rest, ("limit", "5")]
+    # query value wins over the default
+    assert override_search_param(pairs, "limit", None, 50) == [*rest, ("limit", "10")]
+    # default when neither sets it
+    assert override_search_param(rest, "limit", None, 50) == [*rest, ("limit", "50")]
+    # nothing set at all: key absent
+    assert override_search_param(rest, "order") == rest
+
+
+def test_override_search_param_keeps_only_first_query_value():
+    pairs = [("order", "bug_id DESC"), ("order", "changeddate")]
+    assert override_search_param(pairs, "order") == [("order", "bug_id DESC")]
+
+
+def test_override_search_param_blank_counts_as_not_set():
+    pairs = [("include_fields", "")]
+    assert override_search_param(pairs, "include_fields", "", "id,summary") == [
+        ("include_fields", "id,summary")
+    ]
+    assert override_search_param([("order", "")], "order") == []
+
+
+def test_override_search_param_zero_is_a_value():
+    assert override_search_param([("offset", "20")], "offset", 0) == [("offset", "0")]
