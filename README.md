@@ -190,6 +190,18 @@ The server provides the following tools for interacting with Bugzilla:
   - **Returns**: A list of dictionaries, each containing essential bug fields
   - **Example**: `bugs_quicksearch("product:Firefox status:NEW", limit=10, order="bug_id DESC")`
 
+- **`bugs_search(query: str | dict, include_fields: Optional[str] = None, limit: Optional[int] = None, offset: Optional[int] = None, order: Optional[str] = None)`**: Searches bugs with Bugzilla's [advanced search](https://bugzilla.readthedocs.io/en/latest/using/finding.html#advanced-search) parameters, as used by `buglist.cgi`. Use it for what Quicksearch can't express: boolean charts (`f1`/`o1`/`v1`, `j_top`, `OP`/`CP` brackets), operators such as `isempty`, or exact matches on custom fields (`cf_*`).
+  - **Parameters**:
+    - `query`: Either a query string copied from a `buglist.cgi` URL (the full URL or just the part after `?`), or a dict whose values are strings, integers or lists of them. Repeated keys are kept: in a dict, a list repeats the key (e.g. `{"bug_status": ["NEW", "CONFIRMED"]}`)
+    - `include_fields`: Comma-separated list of fields to return (default: `"id,product,component,assigned_to,status,resolution,summary,last_change_time"`)
+    - `limit`: Maximum number of results to return (default: `50`)
+    - `offset`: Number of results to skip for pagination (default: none)
+    - `order`: Sort order, e.g. `"bug_id DESC"` or `"changeddate DESC"` (default: none, so Bugzilla's own order applies)
+  - These four arguments override the same keys in `query`; when neither sets them, the defaults above apply. Credentials (`api_key`, `Bugzilla_login`, ...) and web-UI-only keys (`columnlist`, `ctype`, `list_id`, ...) in `query` are ignored, so a pasted URL can't override the server's API key.
+  - **Note on Bugzilla API parity**: all other parameters are forwarded unchanged to the standard `Bug.search` endpoint (`GET /rest/bug`), so Bugzilla decides what is valid and its errors are surfaced as-is. Boolean charts over REST need Bugzilla 5.0 or newer.
+  - **Returns**: A dictionary with the matched bugs under `bugs`
+  - **Example**: `bugs_search("https://bugzilla.example.com/buglist.cgi?product=Firefox&f1=cf_foo&o1=isempty", order="bug_id DESC")`
+
 - **`quicksearch_syntax_resource()`**: Returns documentation on Bugzilla's quicksearch syntax.
   - **Returns**: A string containing Markdown documentation.
 
@@ -548,6 +560,32 @@ result = client.call_tool(
     "bugs_quicksearch", {"query": "product:Firefox status:NEW", "limit": 10}
 )
 # Returns list of bugs with essential fields
+
+# Advanced search: summary contains "crash" OR "panic", NEW or CONFIRMED bugs only
+result = client.call_tool(
+    "bugs_search",
+    {
+        "query": {
+            "bug_status": ["NEW", "CONFIRMED"],
+            "f1": "OP",
+            "j1": "OR",
+            "f2": "short_desc",
+            "o2": "substring",
+            "v2": "crash",
+            "f3": "short_desc",
+            "o3": "substring",
+            "v3": "panic",
+            "f4": "CP",
+        },
+        "order": "bug_id DESC",
+    },
+)
+
+# Or paste a search straight from the Bugzilla web UI
+result = client.call_tool(
+    "bugs_search",
+    {"query": "https://bugzilla.example.com/buglist.cgi?product=Firefox&bug_status=NEW"},
+)
 ```
 
 ### Example 3: Add a Comment

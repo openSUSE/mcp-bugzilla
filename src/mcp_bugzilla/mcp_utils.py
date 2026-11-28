@@ -12,6 +12,7 @@ import logging
 import os
 import re
 from typing import Any
+from urllib.parse import parse_qsl
 
 # Re-export Bugzilla and BugzillaAPIError for backward compatibility.
 # Lazily imported to avoid circular dependencies — lib_bugzilla imports
@@ -198,3 +199,101 @@ def parse_exclude_rule(rule: str) -> tuple[str, str]:
             f"Allowed: {', '.join(sorted(EXCLUDABLE_FIELDS))}"
         )
     return field, value
+
+
+# Keys removed from advanced search queries before they reach Bugzilla.
+# Credentials would override the server's configured key; the others only drive
+# the web UI (buglist.cgi) and mean nothing to the REST API.
+SEARCH_CREDENTIAL_KEYS = frozenset(
+    {
+        "api_key",
+        "Bugzilla_api_key",
+        "Bugzilla_login",
+        "Bugzilla_password",
+        "Bugzilla_token",
+        "token",
+    }
+)
+SEARCH_UI_KEYS = frozenset(
+    {
+        "cmdtype",
+        "columnlist",
+        "ctype",
+        "known_name",
+        "list_id",
+        "query_based_on",
+        "query_format",
+        "remaction",
+    }
+)
+
+
+def parse_search_query(query: str | dict[str, Any]) -> list[tuple[str, str]]:
+    """Turn an advanced search query into ordered ``(key, value)`` pairs.
+
+    ``query`` is either a query string, as copied from ``buglist.cgi?...`` (a
+    full URL or just the part after ``?``), or a dict whose values are strings,
+    integers or lists of them. Repeated keys are kept in order: a list value
+    becomes one pair per item. Blank values are kept, since ``v1=`` is
+    meaningful for some boolean chart operators.
+    """
+    if isinstance(query, str):
+        text = query.strip()
+        head, sep, tail = text.partition("?")
+        # Only cut a URL prefix ("https://host/buglist.cgi?"), never a "?" that
+        # is part of a value in a bare query string ("short_desc=why?").
+        if sep and "=" not in head and "&" not in head:
+            text = tail.partition("#")[0]
+        return parse_qsl(text, keep_blank_values=True)
+
+    if not isinstance(query, dict):
+        raise TypeError(
+            f"Unsupported query type {type(query).__name__}: "
+            "expected a query string or a dict"
+        )
+    pairs = []
+    for key, value in query.items():
+        for item in value if isinstance(value, list) else [value]:
+            # bool is a subclass of int, but True/False mean nothing to Bugzilla
+            if isinstance(item, bool) or not isinstance(item, (str, int)):
+                raise TypeError(
+                    f"Unsupported value for {key!r}: expected a string, "
+                    "an integer or a list of them"
+                )
+            pairs.append((key, str(item)))
+    return pairs
+
+
+def drop_search_keys(
+    pairs: list[tuple[str, str]],
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """Remove credential and web-UI-only keys from search pairs.
+
+    Returns the remaining pairs and the sorted names of the removed keys, so
+    the caller can log what was dropped without ever logging a value.
+    """
+    unwanted = SEARCH_CREDENTIAL_KEYS | SEARCH_UI_KEYS
+    kept = [(k, v) for k, v in pairs if k not in unwanted]
+    dropped = sorted({k for k, _ in pairs if k in unwanted})
+    return kept, dropped
+
+
+def override_search_param(
+    pairs: list[tuple[str, str]],
+    key: str,
+    value: str | int | None = None,
+    default: str | int | None = None,
+) -> list[tuple[str, str]]:
+    """Make ``key`` appear at most once in search pairs.
+
+    The value used is, in order of precedence: ``value``, the first non-blank
+    value of ``key`` already in ``pairs`` (Bugzilla reads the first one too),
+    then ``default``. ``None`` and ``""`` count as not set. If none is set,
+    ``key`` is removed. Other keys, repeated ones included, are left as they are.
+    """
+    existing = [v for k, v in pairs if k == key and v != ""]
+    rest = [(k, v) for k, v in pairs if k != key]
+    for candidate in (value, existing[0] if existing else None, default):
+        if candidate is not None and candidate != "":
+            return [*rest, (key, str(candidate))]
+    return rest

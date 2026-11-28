@@ -10,7 +10,15 @@ from mcp_bugzilla.lib_bugzilla import (
     BugzillaAPIError,
     BugzillaResponseError,
 )
-from mcp_bugzilla.mcp_utils import is_textual, parse_exclude_rule, safe_filename
+from mcp_bugzilla.mcp_utils import (
+    drop_search_keys,
+    is_textual,
+    mcp_log,
+    override_search_param,
+    parse_exclude_rule,
+    parse_search_query,
+    safe_filename,
+)
 
 MOCK_URL = "https://bugzilla.example.com"
 MOCK_API_KEY = "secret_key"
@@ -433,6 +441,87 @@ async def test_quicksearch_custom_order(bz_client):
         assert route.called
         params = route.calls.last.request.url.params
         assert params["order"] == "bug_id DESC"
+
+
+@pytest.mark.asyncio
+async def test_search_sends_params_unchanged_and_in_order(bz_client):
+    params = [
+        ("bug_status", "NEW"),
+        ("f1", "cf_foo"),
+        ("o1", "equals"),
+        ("v1", "a b"),
+        ("j_top", "OR"),
+        ("bug_status", "CONFIRMED"),
+        ("cf_bar", "x"),
+        ("v2", ""),
+        ("include_fields", "id,summary"),
+        ("limit", "50"),
+    ]
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/bug").mock(
+            return_value=Response(200, json={"bugs": [{"id": 1}]})
+        )
+        res = await bz_client.search(params)
+
+    assert res == {"bugs": [{"id": 1}]}
+    sent = route.calls.last.request.url.params
+    # httpx groups a repeated key's values together; their order is what counts
+    assert sorted(sent.multi_items()) == sorted([("api_key", MOCK_API_KEY), *params])
+    assert sent.get_list("bug_status") == ["NEW", "CONFIRMED"]
+
+
+@pytest.mark.asyncio
+async def test_search_drops_pasted_credentials_and_ui_keys(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/bug").mock(
+            return_value=Response(200, json={"bugs": []})
+        )
+        await bz_client.search(
+            [
+                ("api_key", "PASTED"),
+                ("Bugzilla_api_key", "PASTED"),
+                ("Bugzilla_login", "someone"),
+                ("Bugzilla_password", "PASTED"),
+                ("columnlist", "bug_status,short_desc"),
+                ("ctype", "csv"),
+                ("product", "Foo"),
+            ]
+        )
+
+    sent = route.calls.last.request.url.params
+    assert list(sent.multi_items()) == [("api_key", MOCK_API_KEY), ("product", "Foo")]
+
+
+@pytest.mark.asyncio
+async def test_search_never_logs_dropped_values(bz_client, caplog, monkeypatch):
+    monkeypatch.setattr(mcp_log, "propagate", True)  # mcp_log doesn't propagate
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/bug").mock(return_value=Response(200, json={"bugs": []}))
+        with caplog.at_level("DEBUG", logger=mcp_log.name):
+            await bz_client.search([("api_key", "PASTED"), ("product", "Foo")])
+
+    assert "PASTED" not in caplog.text
+    assert "Dropped search keys: api_key" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_search_surfaces_bugzilla_error(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/bug").mock(
+            return_value=Response(
+                400,
+                json={
+                    "error": True,
+                    "code": 108,
+                    "message": "Can't use cf_nope as a field name.",
+                },
+            )
+        )
+        with pytest.raises(BugzillaAPIError) as exc:
+            await bz_client.search([("f1", "cf_nope"), ("o1", "equals"), ("v1", "x")])
+
+    assert exc.value.code == 108
+    assert "cf_nope" in exc.value.message
 
 
 @pytest.mark.asyncio
@@ -1038,6 +1127,53 @@ async def test_exclude_lookup_is_exhaustive_and_fails_closed():
 
 
 @pytest.mark.asyncio
+async def test_search_honours_exclude_rules():
+    bz = Bugzilla(MOCK_URL, exclude=[parse_exclude_rule("summary=EMBARGOED")])
+    searches = []
+    try:
+        async with respx.mock(base_url=MOCK_URL) as respx_mock:
+
+            def handler(request):
+                q = request.url.params
+                if q.get("include_fields") == "id" and "summary" in q:
+                    # the exclusion lookup: bug 2 matches the rule
+                    hit = [{"id": 2}] if "2" in q["id"].split(",") else []
+                    return Response(200, json={"bugs": hit})
+                searches.append(q)
+                return Response(200, json={"bugs": [{"id": 1}, {"id": 2}, {"id": 3}]})
+
+            respx_mock.get("/rest/bug").mock(side_effect=handler)
+
+            res = await bz.search([("product", "Foo"), ("include_fields", "summary")])
+            assert [b["id"] for b in res["bugs"]] == [1, 3]
+            # id was added so excluded bugs can be recognised
+            assert searches[-1]["include_fields"] == "summary,id"
+
+            await bz.search([("include_fields", "_default")])
+            assert searches[-1]["include_fields"] == "_default"
+
+            await bz.search([("exclude_fields", "id,cc")])
+            assert searches[-1]["exclude_fields"] == "cc"
+    finally:
+        await bz.close()
+
+
+@pytest.mark.asyncio
+async def test_search_without_exclusions_does_not_require_id(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/bug").mock(
+            return_value=Response(200, json={"bugs": [{"summary": "no id"}]})
+        )
+        res = await bz_client.search(
+            [("include_fields", "summary"), ("exclude_fields", "id")]
+        )
+    assert res["bugs"] == [{"summary": "no id"}]
+    sent = route.calls.last.request.url.params
+    assert sent["include_fields"] == "summary"
+    assert sent["exclude_fields"] == "id"
+
+
+@pytest.mark.asyncio
 async def test_quicksearch_without_exclusions_does_not_require_id(bz_client):
     async with respx.mock(base_url=MOCK_URL) as respx_mock:
         respx_mock.get("/rest/bug").mock(
@@ -1057,3 +1193,132 @@ def test_parse_exclude_rule():
     for bad in ["", "summary", "summary=", "sumary=x", "id=1", "summary=a&product=b"]:
         with pytest.raises(ValueError):
             parse_exclude_rule(bad)
+
+
+def test_parse_search_query_keeps_repeated_keys_in_order():
+    assert parse_search_query(
+        "bug_status=NEW&product=openSUSE&bug_status=CONFIRMED"
+    ) == [
+        ("bug_status", "NEW"),
+        ("product", "openSUSE"),
+        ("bug_status", "CONFIRMED"),
+    ]
+
+
+def test_parse_search_query_full_url_and_prefixes():
+    expected = [("f1", "cf_foo"), ("o1", "equals"), ("v1", "a b"), ("j_top", "OR")]
+    query = "f1=cf_foo&o1=equals&v1=a+b&j_top=OR"
+    for text in [
+        f"https://bugzilla.example.com/buglist.cgi?{query}",
+        f"https://bugzilla.example.com/buglist.cgi?{query}#top",
+        f"buglist.cgi?{query}",
+        f"?{query}",
+        f"  {query}\n",
+    ]:
+        assert parse_search_query(text) == expected, text
+
+
+def test_parse_search_query_question_mark_inside_value_is_kept():
+    assert parse_search_query("short_desc=why?&o1=isempty") == [
+        ("short_desc", "why?"),
+        ("o1", "isempty"),
+    ]
+
+
+def test_parse_search_query_keeps_blank_values():
+    assert parse_search_query("f1=cf_foo&o1=isempty&v1=") == [
+        ("f1", "cf_foo"),
+        ("o1", "isempty"),
+        ("v1", ""),
+    ]
+
+
+def test_parse_search_query_empty():
+    for text in ["", "   ", "?", "https://bugzilla.example.com/buglist.cgi?"]:
+        assert parse_search_query(text) == [], text
+    assert parse_search_query({}) == []
+
+
+def test_parse_search_query_dict():
+    assert parse_search_query(
+        {"product": "openSUSE", "bug_status": ["NEW", "CONFIRMED"], "limit": 10}
+    ) == [
+        ("product", "openSUSE"),
+        ("bug_status", "NEW"),
+        ("bug_status", "CONFIRMED"),
+        ("limit", "10"),
+    ]
+
+
+def test_parse_search_query_dict_rejects_unsupported_values():
+    for bad in [
+        {"product": {"name": "x"}},
+        {"product": None},
+        {"is_open": True},
+        {"bug_status": ["NEW", None]},
+        {"bug_status": [["NEW"]]},
+    ]:
+        with pytest.raises(TypeError, match=repr(next(iter(bad)))):
+            parse_search_query(bad)
+
+
+def test_parse_search_query_rejects_other_types():
+    with pytest.raises(TypeError, match="Unsupported query type"):
+        parse_search_query(["product=x"])
+
+
+def test_drop_search_keys():
+    pairs = [
+        ("product", "openSUSE"),
+        ("api_key", "LEAKED"),
+        ("Bugzilla_api_key", "LEAKED"),
+        ("columnlist", "bug_status,short_desc"),
+        ("list_id", "123"),
+        ("bug_status", "NEW"),
+        ("ctype", "csv"),
+        ("bug_status", "CONFIRMED"),
+    ]
+    kept, dropped = drop_search_keys(pairs)
+    assert kept == [
+        ("product", "openSUSE"),
+        ("bug_status", "NEW"),
+        ("bug_status", "CONFIRMED"),
+    ]
+    assert dropped == ["Bugzilla_api_key", "api_key", "columnlist", "ctype", "list_id"]
+
+
+def test_drop_search_keys_is_case_sensitive():
+    # Bugzilla's own parameter names are case-sensitive; API_KEY means nothing to it
+    kept, dropped = drop_search_keys([("API_KEY", "x")])
+    assert kept == [("API_KEY", "x")]
+    assert dropped == []
+
+
+def test_override_search_param_precedence():
+    pairs = [("bug_status", "NEW"), ("limit", "10"), ("bug_status", "CONFIRMED")]
+    rest = [("bug_status", "NEW"), ("bug_status", "CONFIRMED")]
+    # explicit value wins over the query and the default
+    assert override_search_param(pairs, "limit", 5, 50) == [*rest, ("limit", "5")]
+    # query value wins over the default
+    assert override_search_param(pairs, "limit", None, 50) == [*rest, ("limit", "10")]
+    # default when neither sets it
+    assert override_search_param(rest, "limit", None, 50) == [*rest, ("limit", "50")]
+    # nothing set at all: key absent
+    assert override_search_param(rest, "order") == rest
+
+
+def test_override_search_param_keeps_only_first_query_value():
+    pairs = [("order", "bug_id DESC"), ("order", "changeddate")]
+    assert override_search_param(pairs, "order") == [("order", "bug_id DESC")]
+
+
+def test_override_search_param_blank_counts_as_not_set():
+    pairs = [("include_fields", "")]
+    assert override_search_param(pairs, "include_fields", "", "id,summary") == [
+        ("include_fields", "id,summary")
+    ]
+    assert override_search_param([("order", "")], "order") == []
+
+
+def test_override_search_param_zero_is_a_value():
+    assert override_search_param([("offset", "20")], "offset", 0) == [("offset", "0")]

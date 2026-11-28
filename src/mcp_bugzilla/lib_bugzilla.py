@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 from httpx_retries import RetryTransport
 
-from .mcp_utils import mcp_log
+from .mcp_utils import drop_search_keys, mcp_log
 
 
 class BugzillaAPIError(Exception):
@@ -64,6 +64,16 @@ def _bugzilla_error_body(response: httpx.Response) -> dict[str, Any] | None:
     except (ValueError, KeyError):
         pass
     return None
+
+
+def _with_id_field(key: str, value: str) -> tuple[str, str]:
+    """Make an ``include_fields``/``exclude_fields`` pair keep the bug ``id``."""
+    fields = [f.strip() for f in value.split(",")]
+    if key == "include_fields" and not {"id", "_default", "_all"} & set(fields):
+        return key, f"{value},id"
+    if key == "exclude_fields" and "id" in fields:
+        return key, ",".join(f for f in fields if f != "id")
+    return key, value
 
 
 class Bugzilla:
@@ -354,6 +364,37 @@ class Bugzilla:
             "offset": offset,
             "order": order,
         }
+
+        mcp_log.info(f"[BZ-REQ] GET {self.api_url}/bug params={params}")
+
+        r = await self._request("GET", "/bug", params=params)
+
+        envelope = _json_or_raise(r)
+        bugs = envelope.get("bugs", [])
+        if self.exclude_rules:
+            excluded = await self._find_excluded_ids({b["id"] for b in bugs})
+            bugs = envelope["bugs"] = [b for b in bugs if b["id"] not in excluded]
+        mcp_log.info(f"[BZ-RES] Found {len(bugs)} bugs")
+        return envelope
+
+    async def search(self, params: list[tuple[str, str]]) -> dict[str, Any]:
+        """Search bugs with advanced search parameters (``GET /rest/bug``).
+
+        ``params`` are ``(key, value)`` pairs as built from a ``buglist.cgi``
+        query: boolean charts (``f1``/``o1``/``v1``, ``j_top``...), field
+        criteria (``product``, ``cf_*``...) and result shaping
+        (``include_fields``, ``limit``, ``offset``, ``order``). They are sent
+        unchanged, and the values of a repeated key keep their order. Credential
+        and web-UI-only keys are dropped: a pasted ``api_key`` would otherwise
+        override the configured one.
+        """
+        params, dropped = drop_search_keys(params)
+        if dropped:
+            mcp_log.info(f"[BZ-REQ] Dropped search keys: {', '.join(dropped)}")
+
+        if self.exclude_rules:
+            # Excluded bugs are identified by id, so it must be in the results
+            params = [_with_id_field(k, v) for k, v in params]
 
         mcp_log.info(f"[BZ-REQ] GET {self.api_url}/bug params={params}")
 

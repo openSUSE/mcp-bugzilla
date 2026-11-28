@@ -1033,3 +1033,152 @@ async def test_bugs_quicksearch_custom_order():
         0,
         "bug_id DESC",
     )
+
+
+def _search_bz():
+    bz = AsyncMock()
+    bz.search = AsyncMock(return_value={"bugs": [{"id": 1}]})
+    return bz
+
+
+def _sent_params(bz):
+    """The (key, value) pairs bugs_search handed to Bugzilla.search."""
+    (params,), _ = bz.search.await_args
+    return params
+
+
+_DEFAULTS = [
+    ("include_fields", server.SEARCH_DEFAULT_FIELDS),
+    ("limit", "50"),
+]
+
+
+@pytest.mark.asyncio
+async def test_bugs_search_query_string_applies_defaults():
+    bz = _search_bz()
+
+    res = await server.bugs_search(
+        "product=openSUSE&bug_status=NEW&bug_status=CONFIRMED", bz=bz
+    )
+
+    assert res == {"bugs": [{"id": 1}]}
+    assert _sent_params(bz) == [
+        ("product", "openSUSE"),
+        ("bug_status", "NEW"),
+        ("bug_status", "CONFIRMED"),
+        *_DEFAULTS,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_bugs_search_full_url_with_boolean_charts():
+    bz = _search_bz()
+
+    await server.bugs_search(
+        "https://bugzilla.example.com/buglist.cgi?f1=cf_foo&o1=equals&v1=bar"
+        "&j_top=OR&f2=short_desc&o2=substring&v2=crash",
+        bz=bz,
+    )
+
+    assert _sent_params(bz) == [
+        ("f1", "cf_foo"),
+        ("o1", "equals"),
+        ("v1", "bar"),
+        ("j_top", "OR"),
+        ("f2", "short_desc"),
+        ("o2", "substring"),
+        ("v2", "crash"),
+        *_DEFAULTS,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_bugs_search_dict_with_lists():
+    bz = _search_bz()
+
+    await server.bugs_search(
+        {"product": "openSUSE", "bug_status": ["NEW", "CONFIRMED"], "cf_foo": 3},
+        bz=bz,
+    )
+
+    assert _sent_params(bz) == [
+        ("product", "openSUSE"),
+        ("bug_status", "NEW"),
+        ("bug_status", "CONFIRMED"),
+        ("cf_foo", "3"),
+        *_DEFAULTS,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_bugs_search_query_values_beat_defaults():
+    bz = _search_bz()
+
+    await server.bugs_search(
+        "product=Foo&include_fields=id,cf_foo&limit=10&offset=20&order=bug_id+DESC",
+        bz=bz,
+    )
+
+    assert _sent_params(bz) == [
+        ("product", "Foo"),
+        ("include_fields", "id,cf_foo"),
+        ("limit", "10"),
+        ("offset", "20"),
+        ("order", "bug_id DESC"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_bugs_search_arguments_beat_query_values():
+    bz = _search_bz()
+
+    await server.bugs_search(
+        "product=Foo&include_fields=id&limit=10&offset=20&order=bug_id",
+        include_fields="id,summary",
+        limit=5,
+        offset=0,
+        order="changeddate DESC",
+        bz=bz,
+    )
+
+    assert _sent_params(bz) == [
+        ("product", "Foo"),
+        ("include_fields", "id,summary"),
+        ("limit", "5"),
+        ("offset", "0"),
+        ("order", "changeddate DESC"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_bugs_search_drops_credentials_before_logging(caplog, monkeypatch):
+    monkeypatch.setattr(server.mcp_log, "propagate", True)  # mcp_log doesn't propagate
+    bz = _search_bz()
+
+    with caplog.at_level("INFO", logger=server.mcp_log.name):
+        await server.bugs_search(
+            "buglist.cgi?product=Foo&api_key=PASTED&columnlist=bug_status", bz=bz
+        )
+
+    assert _sent_params(bz) == [("product", "Foo"), *_DEFAULTS]
+    assert "PASTED" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_bugs_search_rejects_unsupported_dict_values():
+    bz = _search_bz()
+
+    with pytest.raises(
+        ToolError, match="Search failed: Unsupported value for 'product'"
+    ):
+        await server.bugs_search({"product": {"name": "Foo"}}, bz=bz)
+    bz.search.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_bugs_search_bugzilla_error_raises_tool_error():
+    bz = _search_bz()
+    bz.search = AsyncMock(side_effect=RuntimeError("Can't use cf_nope as a field name"))
+
+    with pytest.raises(ToolError, match="Search failed: Can't use cf_nope"):
+        await server.bugs_search("f1=cf_nope&o1=equals&v1=x", bz=bz)
