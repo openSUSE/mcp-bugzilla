@@ -13,6 +13,7 @@ from mcp_bugzilla.lib_bugzilla import (
 from mcp_bugzilla.mcp_utils import (
     drop_search_keys,
     is_textual,
+    mcp_log,
     override_search_param,
     parse_exclude_rule,
     parse_search_query,
@@ -440,6 +441,87 @@ async def test_quicksearch_custom_order(bz_client):
         assert route.called
         params = route.calls.last.request.url.params
         assert params["order"] == "bug_id DESC"
+
+
+@pytest.mark.asyncio
+async def test_search_sends_params_unchanged_and_in_order(bz_client):
+    params = [
+        ("bug_status", "NEW"),
+        ("f1", "cf_foo"),
+        ("o1", "equals"),
+        ("v1", "a b"),
+        ("j_top", "OR"),
+        ("bug_status", "CONFIRMED"),
+        ("cf_bar", "x"),
+        ("v2", ""),
+        ("include_fields", "id,summary"),
+        ("limit", "50"),
+    ]
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/bug").mock(
+            return_value=Response(200, json={"bugs": [{"id": 1}]})
+        )
+        res = await bz_client.search(params)
+
+    assert res == {"bugs": [{"id": 1}]}
+    sent = route.calls.last.request.url.params
+    # httpx groups a repeated key's values together; their order is what counts
+    assert sorted(sent.multi_items()) == sorted([("api_key", MOCK_API_KEY), *params])
+    assert sent.get_list("bug_status") == ["NEW", "CONFIRMED"]
+
+
+@pytest.mark.asyncio
+async def test_search_drops_pasted_credentials_and_ui_keys(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/bug").mock(
+            return_value=Response(200, json={"bugs": []})
+        )
+        await bz_client.search(
+            [
+                ("api_key", "PASTED"),
+                ("Bugzilla_api_key", "PASTED"),
+                ("Bugzilla_login", "someone"),
+                ("Bugzilla_password", "PASTED"),
+                ("columnlist", "bug_status,short_desc"),
+                ("ctype", "csv"),
+                ("product", "Foo"),
+            ]
+        )
+
+    sent = route.calls.last.request.url.params
+    assert list(sent.multi_items()) == [("api_key", MOCK_API_KEY), ("product", "Foo")]
+
+
+@pytest.mark.asyncio
+async def test_search_never_logs_dropped_values(bz_client, caplog, monkeypatch):
+    monkeypatch.setattr(mcp_log, "propagate", True)  # mcp_log doesn't propagate
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/bug").mock(return_value=Response(200, json={"bugs": []}))
+        with caplog.at_level("DEBUG", logger=mcp_log.name):
+            await bz_client.search([("api_key", "PASTED"), ("product", "Foo")])
+
+    assert "PASTED" not in caplog.text
+    assert "Dropped search keys: api_key" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_search_surfaces_bugzilla_error(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        respx_mock.get("/rest/bug").mock(
+            return_value=Response(
+                400,
+                json={
+                    "error": True,
+                    "code": 108,
+                    "message": "Can't use cf_nope as a field name.",
+                },
+            )
+        )
+        with pytest.raises(BugzillaAPIError) as exc:
+            await bz_client.search([("f1", "cf_nope"), ("o1", "equals"), ("v1", "x")])
+
+    assert exc.value.code == 108
+    assert "cf_nope" in exc.value.message
 
 
 @pytest.mark.asyncio
@@ -1042,6 +1124,53 @@ async def test_exclude_lookup_is_exhaustive_and_fails_closed():
                 await bz._find_excluded_ids({1, 2})
     finally:
         await bz.close()
+
+
+@pytest.mark.asyncio
+async def test_search_honours_exclude_rules():
+    bz = Bugzilla(MOCK_URL, exclude=[parse_exclude_rule("summary=EMBARGOED")])
+    searches = []
+    try:
+        async with respx.mock(base_url=MOCK_URL) as respx_mock:
+
+            def handler(request):
+                q = request.url.params
+                if q.get("include_fields") == "id" and "summary" in q:
+                    # the exclusion lookup: bug 2 matches the rule
+                    hit = [{"id": 2}] if "2" in q["id"].split(",") else []
+                    return Response(200, json={"bugs": hit})
+                searches.append(q)
+                return Response(200, json={"bugs": [{"id": 1}, {"id": 2}, {"id": 3}]})
+
+            respx_mock.get("/rest/bug").mock(side_effect=handler)
+
+            res = await bz.search([("product", "Foo"), ("include_fields", "summary")])
+            assert [b["id"] for b in res["bugs"]] == [1, 3]
+            # id was added so excluded bugs can be recognised
+            assert searches[-1]["include_fields"] == "summary,id"
+
+            await bz.search([("include_fields", "_default")])
+            assert searches[-1]["include_fields"] == "_default"
+
+            await bz.search([("exclude_fields", "id,cc")])
+            assert searches[-1]["exclude_fields"] == "cc"
+    finally:
+        await bz.close()
+
+
+@pytest.mark.asyncio
+async def test_search_without_exclusions_does_not_require_id(bz_client):
+    async with respx.mock(base_url=MOCK_URL) as respx_mock:
+        route = respx_mock.get("/rest/bug").mock(
+            return_value=Response(200, json={"bugs": [{"summary": "no id"}]})
+        )
+        res = await bz_client.search(
+            [("include_fields", "summary"), ("exclude_fields", "id")]
+        )
+    assert res["bugs"] == [{"summary": "no id"}]
+    sent = route.calls.last.request.url.params
+    assert sent["include_fields"] == "summary"
+    assert sent["exclude_fields"] == "id"
 
 
 @pytest.mark.asyncio
